@@ -147,7 +147,7 @@ class WP_Master_Updater_GitHub_Updater {
             
             $message = $has_update 
                 ? sprintf(__('Update found! Version %s is available.', 'wp-master-updater'), $transient->response[$this->plugin_slug]->new_version)
-                : __('No updates found. You are running the latest version.', 'wp-master-updater');
+                : __('No updates found. You are using the latest version.', 'wp-master-updater');
             
             set_transient('marrison_check_message_' . get_current_user_id(), $message, 60);
             
@@ -162,7 +162,7 @@ class WP_Master_Updater_GitHub_Updater {
             '_wpnonce' => wp_create_nonce('marrison_force_check_' . $this->slug)
         ], self_admin_url('plugins.php'));
         
-        $links[] = '<a href="' . esc_url($url) . '">' . __('Check for Updates', 'wp-master-updater') . '</a>';
+        $links[] = '<a href="' . esc_url($url) . '">' . __('Check for updates', 'wp-master-updater') . '</a>';
         return $links;
     }
 

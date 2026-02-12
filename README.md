@@ -1,129 +1,100 @@
 # WP Master Updater
 
-WP Master Updater è il componente principale del sistema di gestione remota di WordPress che consente di controllare e aggiornare più installazioni WordPress da un'unica interfaccia centralizzata.
+WP Master Updater is the main component of the remote WordPress management system that allows you to control and update multiple WordPress installations from a single centralized interface.
 
-## Caratteristiche
+## Features
 
-- **Gestione Multi-Sito**: Controlla e gestisci più installazioni WordPress da un'unica dashboard
-- **Aggiornamenti Centralizzati**: Aggiorna plugin, temi e traduzioni su tutti i client connessi
-- **Sistema di Backup**: Gestione completa dei backup con possibilità di ripristino remoto
-- **Monitoraggio Stato**: Visualizza in tempo reale lo stato di tutti i client connessi
-- **Repository Privati**: Supporta repository privati di plugin e temi
-- **Interfaccia Intuitiva**: Dashboard user-friendly con indicatori LED di stato
+- **Multi-Site Management**: Control and manage multiple WordPress installations from a single dashboard
+- **Centralized Updates**: Update plugins, themes, and translations on all connected clients
+- **Backup System**: Complete backup management with remote restore capability
+- **Status Monitoring**: View the status of all connected clients in real-time
+- **Private Repositories**: Supports private plugin and theme repositories
+- **Intuitive Interface**: User-friendly dashboard with LED status indicators
 
-## Installazione
+## Installation
 
-1. Scarica l'ultima versione dal [repository GitHub](https://github.com/marrisonlab/wp-master-updater)
-2. Carica il plugin nella directory `/wp-content/plugins/` del tuo sito WordPress
-3. Attiva il plugin tramite il pannello di amministrazione WordPress
-4. Configura le impostazioni nella pagina "WP Master Updater" → "Impostazioni"
+1. Download the latest version from the [GitHub repository](https://github.com/marrisonlab/wp-master-updater)
+2. Upload the plugin to the `/wp-content/plugins/` directory of your WordPress site
+3. Activate the plugin via the WordPress admin panel
+4. Configure settings in the "WP Master Updater" → "Settings" page
 
-## Requisiti
+## Requirements
 
-- WordPress 5.0 o superiore
-- PHP 7.0 o superiore
-- Connessione internet per comunicare con i client
+- WordPress 5.0 or higher
+- PHP 7.0 or higher
+- Internet connection to communicate with clients
 
-## Configurazione
+## Configuration
 
-### Repository Privati
+### Private Repositories
 
-Per configurare repository privati di plugin e temi:
+To configure private plugin and theme repositories:
 
-1. Vai a "WP Master Updater" → "Impostazioni"
-2. Inserisci l'URL del tuo repository privato di plugin
-3. Inserisci l'URL del tuo repository privato di temi
-4. Salva le modifiche
+1. Go to "WP Master Updater" → "Settings"
+2. Enter the URL of your private plugin repository
+3. Enter the URL of your private theme repository
+4. Save changes
 
-### Client
+### Clients
 
-Per connettere un client al master:
+To connect a client to the master:
 
-1. Installa il plugin [WP Agent Updater](https://github.com/marrisonlab/wp-agent-updater) sul client
-2. Configura il client per comunicare con l'URL del master
-3. Il client apparirà automaticamente nella dashboard del master
+1. Install the [WP Agent Updater](https://github.com/marrisonlab/wp-agent-updater) plugin on the client
+2. Configure the client to communicate with the master URL
+3. The client will automatically appear in the master dashboard
 
-## Utilizzo
+## Usage
 
-### Dashboard Principale
+### Main Dashboard
 
-La dashboard principale mostra:
-- Elenco di tutti i client connessi
-- Stato degli aggiornamenti (plugin, temi, traduzioni)
-- Indicatori LED di stato (verde, giallo, rosso, nero)
-- Ultima sincronizzazione
-- Azioni rapide (Sync, Aggiorna, Ripristina, Cancella)
+The main dashboard shows:
+- List of all connected clients
+- Update status (plugins, themes, translations)
+- LED status indicators (green, yellow, red, black)
+- Last synchronization
+- Quick actions (Sync, Update, Restore, Delete)
 
-### Dettagli Client
+### Client Details
 
-Clicca su una riga del client per espandere i dettagli:
-- Plugin installati e loro stato
-- Temi installati
-- Backup disponibili
-- Traduzioni
+Click on a client row to expand details:
+- Installed plugins and their status
+- Installed themes
+- Available backups
+- Translations
 
-### Operazioni di Gruppo
+### Bulk Operations
 
-Seleziona più client per eseguire operazioni di gruppo:
-- Sync massiva
-- Aggiornamento massivo
-- Operazioni di backup
+Select multiple clients to perform group operations:
+- Bulk sync
+- Bulk update
+- Backup operations
 
-## Indicatori di Stato
+## Status Indicators
 
-- **Verde** ✅: Tutto aggiornato
-- **Giallo** ⚠️: Plugin disattivati presenti
-- **Rosso** ❌: Aggiornamenti disponibili
-- **Nero** ⚫: Client non raggiungibile
+- **Green** ✅: All up to date
+- **Yellow** ⚠️: Deactivated plugins present
+- **Red** ❌: Updates available
+- **Black** ⚫: Client unreachable
 
-## Backup e Ripristino
+## Backup and Restore
 
-### Creare Backup
-I backup vengono creati automaticamente dal client prima di ogni aggiornamento.
+### Create Backup
+Backups are automatically created by the client before every update.
 
-### Ripristinare Backup
-1. Espandi i dettagli di un client
-2. Seleziona un backup dalla lista
-3. Clicca su "Ripristina"
-4. Conferma l'operazione
+### Restore Backup
+1. Expand client details
+2. Select a backup from the list
+3. Click "Restore"
+4. Confirm the operation
 
-## Sicurezza
+## Security
 
-- Tutte le comunicazioni tra master e client sono sicure
-- Autenticazione tramite nonce WordPress
-- Controllo degli accessi basato sui ruoli WordPress
+- All communications between master and client are secure
+- Authentication via WordPress nonces
+- Access control based on WordPress roles
 
-## Supporto
+## Support
 
-Per supporto e documentazione aggiuntiva:
-- [Repository GitHub](https://github.com/marrisonlab/wp-master-updater)
+For support and additional documentation:
+- [GitHub Repository](https://github.com/marrisonlab/wp-master-updater)
 - [Issue Tracker](https://github.com/marrisonlab/wp-master-updater/issues)
-- Visita [marrisonlab.com](https://marrisonlab.com)
-
-## Sviluppo
-
-Questo plugin è open source e contribuzioni sono benvenute!
-
-### Installazione per Sviluppo
-
-1. Clona il repository: `git clone https://github.com/marrisonlab/wp-master-updater.git`
-2. Attiva il plugin nel tuo ambiente di sviluppo WordPress
-3. Contribuisci seguendo le linee guida standard di WordPress
-
-## Licenza
-
-Questo plugin è rilasciato sotto licenza GPL v2 o successiva.
-
-## Autore
-
-**Angelo Marra**  
-Sito web: [marrisonlab.com](https://marrisonlab.com)  
-GitHub: [marrisonlab](https://github.com/marrisonlab)
-
-### Aggiunto
-- Versione iniziale del plugin WP Master Updater
-- Dashboard principale per la gestione multi-sito
-
----
-
-Per ulteriori informazioni, visita il [sito ufficiale del progetto](https://github.com/marrisonlab/wp-master-updater).

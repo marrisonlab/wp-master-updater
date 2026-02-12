@@ -66,7 +66,7 @@ class Marrison_Master_API {
             $this->finish_guard('[Marrison Sync Output] ');
             return rest_ensure_response([
                 'success' => false,
-                'message' => 'Missing site_url'
+                'message' => 'Missing site URL'
             ]);
         }
 
@@ -95,7 +95,7 @@ class Marrison_Master_API {
         $this->finish_guard('[Marrison Sync Output] ');
         return rest_ensure_response([
             'success' => true,
-            'message' => 'Data synced successfully',
+            'message' => 'Data synchronized successfully',
             'config' => $config
         ]);
     }

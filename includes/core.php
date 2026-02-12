@@ -57,10 +57,137 @@ class Marrison_Master_Core {
     }
 
     /**
+     * Fetch private repository data (Plugins & Themes)
+     */
+    public function get_private_repo_data() {
+        $data = ['plugins' => [], 'themes' => []];
+
+        // Plugins
+        if (get_option('marrison_enable_private_plugins')) {
+            $url = get_option('marrison_private_plugins_repo');
+            if ($url) {
+                $data['plugins'] = $this->fetch_repo_json($url);
+            }
+        }
+
+        // Themes
+        if (get_option('marrison_enable_private_themes')) {
+            $url = get_option('marrison_private_themes_repo');
+            if ($url) {
+                $data['themes'] = $this->fetch_repo_json($url);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Helper to fetch and parse repo JSON
+     */
+    private function fetch_repo_json($url) {
+        $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false]);
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            return [];
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $json = json_decode($body, true);
+
+        // Fallback for packages.json convention
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $url_fallback = untrailingslashit($url) . '/packages.json';
+            $response = wp_remote_get($url_fallback, ['timeout' => 15, 'sslverify' => false]);
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                 $body = wp_remote_retrieve_body($response);
+                 $json = json_decode($body, true);
+            }
+        }
+
+        if (!$json || !is_array($json)) return [];
+
+        // Normalize structure
+        if (isset($json['packages'])) return $json['packages'];
+        if (isset($json['plugins'])) return $json['plugins'];
+        if (isset($json['themes'])) return $json['themes'];
+        
+        return $json;
+    }
+
+    /**
+     * Compare client installed items with private repo and inject updates
+     */
+    public function compare_and_inject_updates(&$client_data, $repo_data) {
+        // Plugins
+        if (!empty($repo_data['plugins']) && !empty($client_data['plugins'])) {
+            foreach ($client_data['plugins'] as $file => $plugin) {
+                $slug = dirname($file); // e.g., 'my-plugin' from 'my-plugin/my-plugin.php'
+                if ($slug === '.') $slug = basename($file, '.php'); // Single file plugins
+
+                // Check for match in repo
+                $repo_item = $repo_data['plugins'][$slug] ?? null;
+                
+                // Fallback: Check if key in repo matches the full filename? Rare but possible.
+                if (!$repo_item && isset($repo_data['plugins'][$file])) {
+                    $repo_item = $repo_data['plugins'][$file];
+                }
+
+                if ($repo_item) {
+                    $new_version = $repo_item['version'] ?? $repo_item['new_version'] ?? null;
+                    $current_version = $plugin['Version'];
+
+                    if ($new_version && version_compare($current_version, $new_version, '<')) {
+                        // Create update entry
+                        if (!isset($client_data['plugins_need_update'])) {
+                            $client_data['plugins_need_update'] = [];
+                        }
+                        
+                        // Only add if not already present (prefer WP repo? or override? usually private overrides)
+                        // Let's overwrite or add.
+                        $client_data['plugins_need_update'][$file] = [
+                            'slug' => $slug,
+                            'new_version' => $new_version,
+                            'package' => $repo_item['package'] ?? $repo_item['download_url'] ?? '',
+                            'url' => $repo_item['url'] ?? '',
+                            'Name' => $plugin['Name']
+                        ];
+                    }
+                }
+            }
+        }
+
+        // Themes
+        if (!empty($repo_data['themes']) && !empty($client_data['themes'])) {
+            foreach ($client_data['themes'] as $slug => $theme) {
+                // Themes are usually keyed by folder name (slug) in WP
+                $repo_item = $repo_data['themes'][$slug] ?? null;
+
+                if ($repo_item) {
+                    $new_version = $repo_item['version'] ?? $repo_item['new_version'] ?? null;
+                    $current_version = $theme['Version'];
+
+                    if ($new_version && version_compare($current_version, $new_version, '<')) {
+                        if (!isset($client_data['themes_need_update'])) {
+                            $client_data['themes_need_update'] = [];
+                        }
+
+                        $client_data['themes_need_update'][$slug] = [
+                            'slug' => $slug,
+                            'new_version' => $new_version,
+                            'package' => $repo_item['package'] ?? $repo_item['download_url'] ?? '',
+                            'url' => $repo_item['url'] ?? '',
+                            'Name' => $theme['Name']
+                        ];
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Trigger remote update with cache clearing and translation support
      */
     public function trigger_remote_update($client_url) {
-        $response = wp_remote_post($client_url . '/wp-json/marrison-agent/v1/update', [
+        $response = wp_remote_post($client_url . '/wp-json/wp-agent-updater/v1/update', [
             'body' => [
                 'clear_cache' => true,
                 'update_translations' => true
@@ -131,6 +258,10 @@ class Marrison_Master_Core {
 
         $data = json_decode(wp_remote_retrieve_body($response), true);
         if ($data && isset($data['site_url'])) {
+            // Inject private updates
+            $repo_data = $this->get_private_repo_data();
+            $this->compare_and_inject_updates($data, $repo_data);
+
             $this->update_client_data($data);
             return true;
         }
@@ -164,7 +295,7 @@ class Marrison_Master_Core {
             return true;
         }
 
-        return new WP_Error('restore_failed', $body['message'] ?? 'Restore failed unknown error');
+        return new WP_Error('restore_failed', $body['message'] ?? 'Restore failed, unknown error');
     }
 
     /**
@@ -179,6 +310,9 @@ class Marrison_Master_Core {
         if (empty($client_urls)) {
             return ['success' => true, 'results' => []];
         }
+
+        // Fetch private repo data once for all clients
+        $repo_data = $this->get_private_repo_data();
 
         $results = [];
         $requests = [];
@@ -226,6 +360,9 @@ class Marrison_Master_Core {
 
             $data = json_decode(wp_remote_retrieve_body($response), true);
             if ($data && isset($data['site_url'])) {
+                // Inject private updates
+                $this->compare_and_inject_updates($data, $repo_data);
+
                 $this->update_client_data($data);
                 $results[$url] = ['success' => true];
             } else {
