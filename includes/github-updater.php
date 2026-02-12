@@ -3,7 +3,8 @@
 class Marrison_GitHub_Updater {
     
     private $plugin_file;
-    private $plugin_slug;
+    private $plugin_slug; // folder/filename.php
+    private $slug; // folder name
     private $github_repo;
     private $github_user;
     private $access_token;
@@ -13,6 +14,7 @@ class Marrison_GitHub_Updater {
     public function __construct($plugin_file, $github_user, $github_repo, $access_token = '') {
         $this->plugin_file = $plugin_file;
         $this->plugin_slug = plugin_basename($plugin_file);
+        $this->slug = dirname($this->plugin_slug);
         $this->github_user = $github_user;
         $this->github_repo = $github_repo;
         $this->access_token = $access_token;
@@ -54,16 +56,27 @@ class Marrison_GitHub_Updater {
             // Normalize version by removing 'v' prefix if present
             $remote_ver_clean = ltrim($remote_version->tag_name, 'v');
             
+            $plugin = new stdClass();
+            $plugin->id = 'https://github.com/' . $this->github_user . '/' . $this->github_repo;
+            $plugin->slug = $this->slug;
+            $plugin->plugin = $this->plugin_slug;
+            $plugin->new_version = $remote_ver_clean;
+            $plugin->url = $plugin_data['PluginURI'];
+            $plugin->package = $this->get_download_url($remote_version);
+            $plugin->icons = [
+                '1x' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/icon-128x128.png',
+                '2x' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/icon-256x256.png'
+            ];
+            $plugin->banners = [
+                'low' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/banner-772x250.png',
+                'high' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/banner-1544x500.png'
+            ];
+
             if (version_compare($current_version, $remote_ver_clean, '<')) {
-                $plugin = new stdClass();
-                $plugin->id = 1;
-                $plugin->slug = $this->plugin_slug;
-                $plugin->plugin = $this->plugin_slug;
-                $plugin->new_version = $remote_ver_clean;
-                $plugin->url = $plugin_data['PluginURI'];
-                $plugin->package = $this->get_download_url($remote_version);
-                
                 $transient->response[$this->plugin_slug] = $plugin;
+            } else {
+                // Add to no_update to enable "Enable auto-updates" link
+                $transient->no_update[$this->plugin_slug] = $plugin;
             }
         }
         
@@ -71,7 +84,14 @@ class Marrison_GitHub_Updater {
     }
     
     public function get_plugin_info($false, $action, $args) {
-        if ($action !== 'plugin_information' || !isset($args->slug) || $args->slug !== $this->plugin_slug) {
+        // Check if this is the correct plugin
+        if ($action !== 'plugin_information') {
+            return $false;
+        }
+
+        // WP sends 'slug' as the folder name, but sometimes it might be the full path depending on context
+        // We check both to be safe
+        if (!isset($args->slug) || ($args->slug !== $this->slug && $args->slug !== $this->plugin_slug)) {
             return $false;
         }
         
@@ -83,7 +103,7 @@ class Marrison_GitHub_Updater {
         
         $plugin = new stdClass();
         $plugin->name = $remote_info->name;
-        $plugin->slug = $this->plugin_slug;
+        $plugin->slug = $this->slug;
         $plugin->version = ltrim($remote_info->tag_name, 'v');
         $plugin->author = $remote_info->author;
         $plugin->homepage = $remote_info->homepage;

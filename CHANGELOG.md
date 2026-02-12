@@ -7,6 +7,14 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-02-12
+
+### Corretto
+- Risolto problema di rilevamento degli aggiornamenti (GitHub Updater) per includere correttamente lo slug del plugin.
+- Aggiunto supporto per la visualizzazione del link "Abilita aggiornamento automatico" nella lista plugin.
+- Migliorato oggetto di risposta dell'aggiornamento con icone e banner.
+- Risolto problema con il popup dei dettagli dell'aggiornamento.
+
 ## [1.0.1] - 2026-02-12
 
 ### Modificato
