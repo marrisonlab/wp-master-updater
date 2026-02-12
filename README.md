@@ -39,7 +39,7 @@ Per configurare repository privati di plugin e temi:
 
 Per connettere un client al master:
 
-1. Installa il plugin [Marrison Agent](https://github.com/marrisonlab/marrison-agent) sul client
+1. Installa il plugin [WP Agent Updater](https://github.com/marrisonlab/wp-agent-updater) sul client
 2. Configura il client per comunicare con l'URL del master
 3. Il client apparirà automaticamente nella dashboard del master
 

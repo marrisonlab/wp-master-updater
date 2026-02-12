@@ -200,8 +200,8 @@ class Marrison_GitHub_Updater {
             $actions['force-check'] = sprintf(
                 '<a href="%s" aria-label="%s">%s</a>',
                 $url,
-                esc_attr__('Forza controllo aggiornamenti da GitHub', 'marrison-master'),
-                __('Forza Controllo', 'marrison-master')
+                esc_attr__('Forza controllo aggiornamenti da GitHub', 'wp-master-updater'),
+                __('Forza Controllo', 'wp-master-updater')
             );
         }
         
@@ -211,9 +211,9 @@ class Marrison_GitHub_Updater {
 
 // Initialize GitHub updater for Marrison Master
 add_action('plugins_loaded', function() {
-    if (file_exists(plugin_dir_path(__FILE__) . '../marrison-master.php')) {
+    if (file_exists(plugin_dir_path(__FILE__) . '../wp-master-updater.php')) {
         new Marrison_GitHub_Updater(
-            plugin_dir_path(__FILE__) . '../marrison-master.php',
+            plugin_dir_path(__FILE__) . '../wp-master-updater.php',
             'marrisonlab',
             'wp-master-updater'
         );

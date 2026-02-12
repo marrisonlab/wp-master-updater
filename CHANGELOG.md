@@ -7,6 +7,14 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-02-12
+
+### Modificato
+- Rinominato file principale plugin da `marrison-master.php` a `wp-master-updater.php` per coerenza.
+- Aggiornati namespace API e slug interni da `marrison-master` a `wp-master-updater`.
+- Corretti endpoint API per la comunicazione con WP Agent Updater (da `marrison-agent` a `wp-agent-updater`).
+- Aggiornati riferimenti documentazione e UI.
+
 ## [1.0.0] - 2024-02-12
 
 ### Aggiunto

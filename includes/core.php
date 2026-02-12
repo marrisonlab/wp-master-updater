@@ -96,7 +96,7 @@ class Marrison_Master_Core {
     public function trigger_remote_sync($client_url, $mark_unreachable = true) {
         // Request fresh data from Agent
         // Append cache buster to avoid cached JSON responses (e.g. Varnish/Cloudflare)
-        $endpoint = trailingslashit($client_url) . 'wp-json/marrison-agent/v1/status';
+        $endpoint = trailingslashit($client_url) . 'wp-json/wp-agent-updater/v1/status';
         $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
 
         $response = wp_remote_get($endpoint, [
@@ -142,7 +142,7 @@ class Marrison_Master_Core {
     }
 
     public function trigger_restore_backup($client_url, $backup_filename) {
-        $response = wp_remote_post($client_url . '/wp-json/marrison-agent/v1/backups/restore', [
+        $response = wp_remote_post($client_url . '/wp-json/wp-agent-updater/v1/backups/restore', [
             'body' => ['filename' => $backup_filename],
             'timeout' => 60,
             'sslverify' => false
@@ -185,7 +185,7 @@ class Marrison_Master_Core {
 
         // Build all requests
         foreach ($client_urls as $url) {
-            $endpoint = trailingslashit($url) . 'wp-json/marrison-agent/v1/status';
+            $endpoint = trailingslashit($url) . 'wp-json/wp-agent-updater/v1/status';
             $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
             
             $requests[$url] = [

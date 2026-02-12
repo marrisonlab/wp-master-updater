@@ -11,7 +11,7 @@ class Marrison_Master_API {
     }
 
     public function register_routes() {
-        register_rest_route('marrison-master/v1', '/sync', [
+        register_rest_route('wp-master-updater/v1', '/sync', [
             'methods' => 'POST',
             'callback' => [$this, 'handle_sync_request'],
             'permission_callback' => '__return_true'

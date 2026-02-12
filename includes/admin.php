@@ -18,12 +18,12 @@ class Marrison_Master_Admin {
             'WP Master Updater',
             'WP Master Updater',
             'manage_options',
-            'marrison-master',
+            'wp-master-updater',
             [$this, 'render_dashboard'],
             'dashicons-networking'
         );
         add_submenu_page(
-            'marrison-master',
+            'wp-master-updater',
             'Impostazioni',
             'Impostazioni',
             'manage_options',
@@ -138,9 +138,9 @@ class Marrison_Master_Admin {
                 <tr>
                     <th scope="row">Versione WP Master Updater</th>
                     <td>
-                        <p>Versione installata: <strong><?php echo get_plugin_data(MARRISON_MASTER_PATH . 'marrison-master.php')['Version']; ?></strong></p>
+                        <p>Versione installata: <strong><?php echo get_plugin_data(WP_MASTER_UPDATER_PATH . 'wp-master-updater.php')['Version']; ?></strong></p>
                         <p>
-                            <a href="<?php echo wp_nonce_url(admin_url('plugins.php?force-check=1&plugin=marrison-master/marrison-master.php'), 'marrison-force-check-marrison-master/marrison-master.php'); ?>" class="button button-primary">
+                            <a href="<?php echo wp_nonce_url(admin_url('plugins.php?force-check=1&plugin=wp-master-updater/wp-master-updater.php'), 'marrison-force-check-wp-master-updater/wp-master-updater.php'); ?>" class="button button-primary">
                                 Cerca Aggiornamenti su GitHub
                             </a>
                         </p>
