@@ -1,0 +1,13 @@
+{
+    "slug": "wp-master-updater",
+    "version": "1.0.4",
+    "name": "WP Master Updater",
+    "download_url": "https://github.com/marrisonlab/wp-master-updater/archive/refs/heads/master.zip",
+    "sections": {
+        "description": "Master controller for WP Master Updater System.",
+        "changelog": "See CHANGELOG.md in the repository."
+    },
+    "requires": "6.0",
+    "tested": "6.4",
+    "last_updated": "2026-02-12"
+}
