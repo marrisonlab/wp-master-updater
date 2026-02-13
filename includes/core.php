@@ -11,12 +11,57 @@ class Marrison_Master_Core {
     public function update_client_data($data) {
         $clients = $this->get_clients();
         $site_url = $data['site_url'];
+        
+        // Preserve ignored plugins
+        $ignored_plugins = [];
+        if (isset($clients[$site_url]['ignored_plugins'])) {
+            $ignored_plugins = $clients[$site_url]['ignored_plugins'];
+        }
+
         // Use site_url as key
         $clients[$site_url] = array_merge($data, [
             'last_sync' => current_time('mysql'),
-            'status' => 'active' // Explicitly mark as active on successful update
+            'status' => 'active', // Explicitly mark as active on successful update
+            'ignored_plugins' => $ignored_plugins
         ]);
         update_option($this->option_name, $clients);
+    }
+
+    public function toggle_ignore_plugin($site_url, $plugin_path, $ignore) {
+        $clients = $this->get_clients();
+        
+        // Normalize input to handle trailing slash mismatches for site key
+        $url_norm = untrailingslashit($site_url);
+        $found_key = false;
+        
+        if (isset($clients[$site_url])) {
+            $found_key = $site_url;
+        } else {
+            foreach (array_keys($clients) as $key) {
+                if (untrailingslashit($key) === $url_norm) {
+                    $found_key = $key;
+                    break;
+                }
+            }
+        }
+
+        if (!$found_key) {
+            return false;
+        }
+        
+        $ignored = $clients[$found_key]['ignored_plugins'] ?? [];
+        
+        if ($ignore === 'true' || $ignore === true) {
+            if (!in_array($plugin_path, $ignored)) {
+                $ignored[] = $plugin_path;
+            }
+        } else {
+            $ignored = array_diff($ignored, [$plugin_path]);
+        }
+        
+        $clients[$found_key]['ignored_plugins'] = array_values($ignored);
+        update_option($this->option_name, $clients);
+        return true;
     }
 
     public function mark_client_unreachable($site_url) {

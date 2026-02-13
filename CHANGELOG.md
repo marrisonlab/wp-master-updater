@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-02-13
+### Added
+- Added functionality to ignore specific plugins from update checks.
+- Excluded ignored plugins from red LED status calculation.
+- Added UI toggle for ignoring plugins in client details.
+
 ## [1.0.8] - 2026-02-13
 
 ### Changed

@@ -12,10 +12,33 @@ class Marrison_Master_Admin {
         add_action('wp_ajax_marrison_client_action', [$this, 'handle_ajax_action']);
         add_action('wp_ajax_marrison_master_clear_cache', [$this, 'handle_clear_cache']);
         add_action('wp_ajax_marrison_fetch_repo_data', [$this, 'handle_fetch_repo_data']);
+        add_action('wp_ajax_marrison_toggle_ignore_plugin', [$this, 'handle_toggle_ignore_plugin']);
         add_action('admin_post_marrison_download_repo_template', [$this, 'handle_download_repo_template']);
 
         $plugin_basename = plugin_basename(WP_MASTER_UPDATER_PATH . 'wp-master-updater.php');
         add_filter('plugin_action_links_' . $plugin_basename, [$this, 'add_action_links']);
+    }
+
+    public function handle_toggle_ignore_plugin() {
+        check_ajax_referer('marrison_master_nonce', 'nonce');
+        
+        $site_url = isset($_POST['client_url']) ? sanitize_text_field($_POST['client_url']) : '';
+        $plugin_path = isset($_POST['plugin_path']) ? sanitize_text_field($_POST['plugin_path']) : '';
+        $ignore = isset($_POST['ignore']) ? ($_POST['ignore'] === 'true') : false;
+        
+        if (empty($site_url) || empty($plugin_path)) {
+            wp_send_json_error(['message' => 'Missing parameters']);
+        }
+        
+        $success = $this->core->toggle_ignore_plugin($site_url, $plugin_path, $ignore);
+        
+        if ($success) {
+            $clients = $this->core->get_clients();
+            $html = $this->render_clients_table_body($clients);
+            wp_send_json_success(['message' => 'Plugin status updated', 'html' => $html]);
+        } else {
+            wp_send_json_error(['message' => 'Failed to update plugin status']);
+        }
     }
 
     public function handle_download_repo_template() {
@@ -925,7 +948,18 @@ class Marrison_Master_Admin {
         <?php else: ?>
             <?php foreach ($clients as $url => $data): ?>
                 <?php
-                    $p_update_count = count($data['plugins_need_update'] ?? []);
+                    $ignored_plugins = $data['ignored_plugins'] ?? [];
+                    $all_plugins_updates = $data['plugins_need_update'] ?? [];
+                    
+                    // Filter updates that are NOT ignored for the count
+                    $real_updates_count = 0;
+                    foreach ($all_plugins_updates as $p) {
+                        if (!in_array($p['path'], $ignored_plugins)) {
+                            $real_updates_count++;
+                        }
+                    }
+
+                    $p_update_count = count($all_plugins_updates);
                     $t_update_count = count($data['themes_need_update'] ?? []);
                     $trans_update = !empty($data['translations_need_update']);
                     $inactive_count = count($data['plugins_inactive'] ?? []);
@@ -938,7 +972,7 @@ class Marrison_Master_Admin {
                     if ($status === 'unreachable') {
                         $led_color = '#000000'; // Black
                         $led_title = 'Agent unreachable';
-                    } elseif ($p_update_count > 0 || $t_update_count > 0 || $trans_update) {
+                    } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
                         $led_color = '#dc3232'; // Red
                         $led_title = 'Updates available';
                     } elseif ($inactive_count > 0) {
@@ -958,7 +992,8 @@ class Marrison_Master_Admin {
                     <td><strong style="display: block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo esc_attr($data['site_name']); ?>"><?php echo esc_html($data['site_name']); ?></strong></td>
                     <td><a href="<?php echo esc_url($url); ?>" target="_blank"><?php echo esc_html($url); ?></a></td>
                     <td>
-                        <?php echo $p_update_count > 0 ? '<span style="color:#dc3232">Updates: ' . $p_update_count . '</span>' : '<span style="color:#46b450">Updated</span>'; ?>
+                        <?php echo $real_updates_count > 0 ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>' : '<span style="color:#46b450">Updated</span>'; ?>
+                        <?php if ($p_update_count > $real_updates_count) echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>'; ?>
                     </td>
                     <td>
                         <?php echo $t_update_count > 0 ? '<span style="color:#dc3232">Updates: ' . $t_update_count . '</span>' : '<span style="color:#46b450">Updated</span>'; ?>
@@ -1082,9 +1117,29 @@ class Marrison_Master_Admin {
                                 <h5 style="color: #ff8080;"><span class="dashicons dashicons-warning"></span> Plugins to update</h5>
                                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 20px;">
                                     <?php foreach ($all_updates as $p): ?>
-                                        <div style="padding: 12px; background: rgba(255,128,128,0.1); border-radius: 6px; border-left: 4px solid #ff8080;">
-                                            <strong style="color: #fff; display: block;"><?php echo esc_html($p['name']); ?></strong>
-                                            <span style="color: #ccc; font-size: 0.85em;">v. <?php echo esc_html($p['version']); ?> → v. <?php echo esc_html($p['new_version']); ?></span>
+                                        <?php 
+                                            $is_ignored = in_array($p['path'], $ignored_plugins);
+                                            $card_bg = $is_ignored ? 'rgba(128,128,128,0.1)' : 'rgba(255,128,128,0.1)';
+                                            $card_border = $is_ignored ? '#808080' : '#ff8080';
+                                            $title_color = $is_ignored ? '#ccc' : '#fff';
+                                        ?>
+                                        <div style="padding: 12px; background: <?php echo $card_bg; ?>; border-radius: 6px; border-left: 4px solid <?php echo $card_border; ?>;">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                <div>
+                                                    <strong style="color: <?php echo $title_color; ?>; display: block;"><?php echo esc_html($p['name']); ?></strong>
+                                                    <span style="color: #ccc; font-size: 0.85em;">v. <?php echo esc_html($p['version']); ?> → v. <?php echo esc_html($p['new_version']); ?></span>
+                                                </div>
+                                                <div style="text-align:right;">
+                                                    <label style="font-size: 11px; color: #aaa; cursor: pointer; display: flex; align-items: center;">
+                                                        <input type="checkbox" class="marrison-ignore-plugin" 
+                                                               data-client-url="<?php echo esc_attr($url); ?>" 
+                                                               data-plugin-path="<?php echo esc_attr($p['path']); ?>" 
+                                                               <?php checked($is_ignored); ?> 
+                                                               style="margin-right: 4px;"> 
+                                                        Ignore
+                                                    </label>
+                                                </div>
+                                            </div>
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
@@ -1468,6 +1523,51 @@ class Marrison_Master_Admin {
 
             jQuery(function($) {
                 bindEvents();
+                
+                // Toggle Ignore Plugin
+                $(document).on('change', '.marrison-ignore-plugin', function() {
+                    var checkbox = $(this);
+                    var clientUrl = checkbox.data('client-url');
+                    var pluginPath = checkbox.data('plugin-path');
+                    var isIgnored = checkbox.is(':checked');
+                    
+                    // Disable checkbox while processing
+                    checkbox.prop('disabled', true);
+                    
+                    // Find the parent details row ID to restore visibility later
+                    var detailsRow = checkbox.closest('tr.mmu-details-row');
+                    var detailsRowId = detailsRow.attr('id');
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        method: 'POST',
+                        data: {
+                            action: 'marrison_toggle_ignore_plugin',
+                            nonce: marrison_vars.nonce,
+                            client_url: clientUrl,
+                            plugin_path: pluginPath,
+                            ignore: isIgnored
+                        },
+                        success: function(res) {
+                            if (res.success) {
+                                // Update table body
+                                $('#marrison-clients-body').html(res.data.html);
+                                bindEvents();
+                                // Restore the open details row
+                                if (detailsRowId) {
+                                    $('#' + detailsRowId).show();
+                                }
+                            } else {
+                                alert(res.data.message || 'Error updating status');
+                                checkbox.prop('disabled', false).prop('checked', !isIgnored); // Revert
+                            }
+                        },
+                        error: function() {
+                            alert('Connection error');
+                            checkbox.prop('disabled', false).prop('checked', !isIgnored); // Revert
+                        }
+                    });
+                });
                 
                 $('#marrison-bulk-sync').on('click', function(e) {
                     e.preventDefault();
