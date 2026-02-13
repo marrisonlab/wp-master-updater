@@ -60,7 +60,7 @@ class Marrison_Master_Admin {
             'manage_options',
             'wp-master-updater',
             [$this, 'render_dashboard'],
-            plugin_dir_url(__FILE__) . 'icon.svg'
+            plugin_dir_url(__FILE__) . 'menu-icon.svg?v=' . time()
         );
         add_submenu_page(
             'wp-master-updater',
@@ -81,11 +81,11 @@ class Marrison_Master_Admin {
     }
 
     public function fix_menu_icon() {
-        $icon_url = plugin_dir_url(__FILE__) . 'icon.svg';
+        $icon_url = plugin_dir_url(__FILE__) . 'menu-icon.svg?v=' . time();
         ?>
         <style>
             #adminmenu .toplevel_page_wp-master-updater .wp-menu-image img {
-                display: none;
+                display: none !important;
             }
             #adminmenu .toplevel_page_wp-master-updater .wp-menu-image {
                 background-color: #a7aaad;
@@ -1145,6 +1145,7 @@ class Marrison_Master_Admin {
             <div class="tablenav top" style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
                 <div class="actions">
                     <button id="marrison-bulk-sync" class="button button-primary">Mass Sync</button>
+                    <button id="marrison-bulk-update" class="button button-secondary" style="margin: 0 5px;">Mass Update</button>
                     <button id="marrison-clear-cache" class="button button-secondary">Clear Master Cache</button>
                 </div>
                 <div id="marrison-progress-wrap" style="display:none; flex: 1; max-width: 400px; border: 1px solid #c3c4c7; height: 24px; background: #fff; position: relative; border-radius: 4px; overflow: hidden;">
@@ -1442,6 +1443,83 @@ class Marrison_Master_Admin {
                     }
                     
                     syncNext();
+                });
+
+                $('#marrison-bulk-update').on('click', function(e) {
+                    e.preventDefault();
+                    if (window.isBulkRunning) return;
+
+                    var clients = [];
+                    // Only select enabled update buttons (sites that need updates)
+                    $('#marrison-clients-body .marrison-action-btn[value="update"]:not(:disabled)').each(function() {
+                        var clientUrl = $(this).closest('form').find('input[name="client_url"]').val();
+                        if (clientUrl && clients.indexOf(clientUrl) === -1) {
+                            clients.push(clientUrl);
+                        }
+                    });
+
+                    if (clients.length === 0) {
+                        alert('No clients available for update (or all are already updated).');
+                        return;
+                    }
+
+                    if (!confirm('Start update on ' + clients.length + ' clients?')) return;
+
+                    window.isBulkRunning = true;
+                    var bulkUpdateBtn = $(this);
+                    var originalText = bulkUpdateBtn.text();
+                    bulkUpdateBtn.prop('disabled', true);
+                    $('.marrison-action-btn').prop('disabled', true);
+                    $('#marrison-notices').empty();
+
+                    var total = clients.length;
+                    var current = 0;
+                    var successCount = 0;
+                    var errorCount = 0;
+                    
+                    updateProgress(0, total, 'Starting mass update...');
+                    
+                    function updateNext() {
+                        if (current >= total) {
+                            $.post(ajaxurl, {
+                                action: 'marrison_client_action',
+                                cmd: 'noop',
+                                nonce: marrison_vars.nonce
+                            }, function(response) {
+                                if (response.success && response.data.html) {
+                                    $('#marrison-clients-body').html(response.data.html);
+                                    bindEvents();
+                                }
+                                $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>Mass update completed. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
+                                updateProgress(total, total, 'Completed!');
+                            }).always(function() {
+                                window.isBulkRunning = false;
+                                bulkUpdateBtn.prop('disabled', false).text(originalText);
+                            });
+                            return;
+                        }
+
+                        var clientUrl = clients[current];
+                        updateProgress(current, total, 'Update in progress: ' + (current + 1) + '/' + total);
+                        
+                        $.post(ajaxurl, {
+                            action: 'marrison_client_action',
+                            cmd: 'update',
+                            client_url: clientUrl,
+                            bulk_mode: 'true',
+                            nonce: marrison_vars.nonce
+                        }, function(response) {
+                            if (response.success) successCount++;
+                            else errorCount++;
+                        }).fail(function() {
+                            errorCount++;
+                        }).always(function() {
+                            current++;
+                            updateNext();
+                        });
+                    }
+                    
+                    updateNext();
                 });
                 
                 $('#marrison-clear-cache').on('click', function(e) {
