@@ -47,8 +47,57 @@ class Marrison_Master_Admin {
         exit;
     }
 
+    private function render_header($title) {
+        $logo_url = plugin_dir_url(__FILE__) . 'logo.svg';
+        ?>
+        <!-- Invisible H1 to catch WordPress notifications and prevent them from being injected into our custom header -->
+        <h1 class="wp-heading-inline" style="display:none;"></h1>
+        
+        <div class="mmu-header">
+            <div class="mmu-header-title">
+                <div class="mmu-title-text"><?php echo esc_html($title); ?></div>
+            </div>
+            <div class="mmu-header-logo">
+                <img src="<?php echo esc_url($logo_url); ?>" alt="Marrison Logo">
+            </div>
+        </div>
+        <style>
+            .mmu-header {
+                height: 120px;
+                background: linear-gradient(to top right, #3f2154, #11111e);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0 40px;
+                margin-bottom: 20px;
+                border-radius: 4px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                color: #fff;
+                box-sizing: border-box;
+            }
+            .mmu-header-title .mmu-title-text {
+                color: #fff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 28px !important;
+                font-weight: 600 !important;
+                line-height: 1.2 !important;
+            }
+            .mmu-header-logo {
+                display: flex;
+                align-items: center;
+            }
+            .mmu-header-logo img {
+                width: 180px;
+                height: auto;
+                display: block;
+            }
+        </style>
+        <?php
+    }
+
     public function add_action_links($links) {
-        $settings_link = '<a href="admin.php?page=marrison-master-settings">Settings</a>';
+        $settings_link = '<a href="admin.php?page=marrison-master-settings">Repositories</a>';
         array_unshift($links, $settings_link);
         return $links;
     }
@@ -64,8 +113,8 @@ class Marrison_Master_Admin {
         );
         add_submenu_page(
             'wp-master-updater',
-            'Settings',
-            'Settings',
+            'Repositories',
+            'Repositories',
             'manage_options',
             'marrison-master-settings',
             [$this, 'render_settings']
@@ -106,68 +155,106 @@ class Marrison_Master_Admin {
 
     public function render_howto() {
         ?>
+        <style>
+            .mmu-guide-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-top: 20px;
+            }
+            .mmu-guide-box {
+                background: #fff;
+                padding: 20px;
+                border: 1px solid #c3c4c7;
+                border-radius: 4px;
+            }
+            .mmu-guide-box h2 {
+                margin-top: 0;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #f0f0f1;
+                font-size: 16px;
+                font-weight: 600;
+                margin-bottom: 16px;
+            }
+            .mmu-download-links {
+                margin-top: 20px;
+                padding-top: 15px;
+                border-top: 1px solid #f0f0f1;
+            }
+            .mmu-download-link {
+                display: block;
+                margin-bottom: 8px;
+                text-decoration: none;
+                color: #2271b1;
+            }
+            .mmu-download-link:hover {
+                text-decoration: underline;
+            }
+            .mmu-download-link .dashicons {
+                font-size: 18px;
+                width: 18px;
+                height: 18px;
+                vertical-align: middle;
+                margin-right: 5px;
+                color: #2271b1;
+            }
+            @media (max-width: 960px) {
+                .mmu-guide-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
         <div class="wrap">
-            <h1>How to use WP Master Updater</h1>
+            <?php $this->render_header('Guide'); ?>
             
-            <div style="background: #fff; padding: 20px; border: 1px solid #c3c4c7; border-radius: 4px; margin-top: 20px;">
-                <h2>Overview</h2>
-                <p>WP Master Updater allows you to manage updates for multiple WordPress sites from a single dashboard. You can update plugins, themes, and translations, as well as manage backups.</p>
-                
-                <hr>
-
-                <h2>LED Legend</h2>
-                <p>The status LEDs on the main dashboard indicate the current status of each connected client site:</p>
-                <ul style="list-style: none; padding: 0;">
-                    <li style="margin-bottom: 10px; display: flex; align-items: center;">
-                        <span class="mmu-led" style="color: #46b450; margin-right: 10px; background: #46b450; width: 12px; height: 12px; display: inline-block; border-radius: 50%;"></span>
-                        <strong>Green:</strong> Everything updated. The site is fully updated and active.
-                    </li>
-                    <li style="margin-bottom: 10px; display: flex; align-items: center;">
-                        <span class="mmu-led" style="color: #dc3232; margin-right: 10px; background: #dc3232; width: 12px; height: 12px; display: inline-block; border-radius: 50%;"></span>
-                        <strong>Red:</strong> Updates available. There are plugins, themes, or translations to update.
-                    </li>
-                    <li style="margin-bottom: 10px; display: flex; align-items: center;">
-                        <span class="mmu-led" style="color: #f0c330; margin-right: 10px; background: #f0c330; width: 12px; height: 12px; display: inline-block; border-radius: 50%;"></span>
-                        <strong>Yellow:</strong> Inactive plugins found. The site has plugins installed but not activated.
-                    </li>
-                    <li style="margin-bottom: 10px; display: flex; align-items: center;">
-                        <span class="mmu-led" style="color: #000000; margin-right: 10px; background: #000000; width: 12px; height: 12px; display: inline-block; border-radius: 50%;"></span>
-                        <strong>Black:</strong> Agent unreachable. The Master Updater cannot connect to the client site. Check if the Agent plugin is active and the URL is correct.
-                    </li>
-                </ul>
-
-                <hr>
-
-                <h2>Private Repositories</h2>
-                <p>You can host your own private repositories for plugins and themes. To do this, you must place the <code>index.php</code> file in your repository directory.</p>
-                
-                <h3>Download Repository Index File</h3>
-                <p>Download the <code>index.php</code> files needed to configure your private repositories:</p>
-                
-                <div style="display: flex; gap: 20px; margin-top: 15px;">
-                    <div>
-                        <a href="<?php echo admin_url('admin-post.php?action=marrison_download_repo_template&type=plugins'); ?>" class="button button-primary">
-                            <span class="dashicons dashicons-download" style="line-height: 28px;"></span> Download Plugin Index
-                        </a>
-                        <p class="description" style="margin-top: 5px;">Place this file in your plugin repository folder.</p>
-                    </div>
-                    <div>
-                        <a href="<?php echo admin_url('admin-post.php?action=marrison_download_repo_template&type=themes'); ?>" class="button button-primary">
-                            <span class="dashicons dashicons-download" style="line-height: 28px;"></span> Download Theme Index
-                        </a>
-                        <p class="description" style="margin-top: 5px;">Place this file in your theme repository folder.</p>
-                    </div>
+            <div class="mmu-guide-grid">
+                <!-- 1. LED Legend -->
+                <div class="mmu-guide-box">
+                    <h2>LED Legend</h2>
+                    <p>The status LEDs on the main dashboard indicate the current status of each connected client site:</p>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #46b450; margin-right: 10px; background: #46b450; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Green:</strong> Everything updated. The site is fully updated and active.</span>
+                        </li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #dc3232; margin-right: 10px; background: #dc3232; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Red:</strong> Updates available. There are plugins, themes, or translations to update.</span>
+                        </li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #f0c330; margin-right: 10px; background: #f0c330; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Yellow:</strong> Inactive plugins found. The site has plugins installed but not activated.</span>
+                        </li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #000000; margin-right: 10px; background: #000000; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Black:</strong> Agent unreachable. The Master Updater cannot connect to the client site. Check if the Agent plugin is active and the URL is correct.</span>
+                        </li>
+                    </ul>
                 </div>
 
-                <h3>Configuration Instructions</h3>
-                <ol>
-                    <li>Create a folder on your server (e.g. <code>/my-plugins-repo/</code>).</li>
-                    <li>Upload your plugin ZIP files to this folder.</li>
-                    <li>Upload the <strong>Plugin Index</strong> file (downloaded above) to this folder and rename it to <code>index.php</code> if necessary (it must be named <code>index.php</code>).</li>
-                    <li>Go to the <strong>Settings</strong> tab in WP Master Updater.</li>
-                    <li>Enable "Private Plugin Repositories" and enter the URL of your folder (e.g. <code>https://example.com/my-plugins-repo/</code>).</li>
-                    <li>Repeat the same process for themes if necessary.</li>
-                </ol>
+                <!-- 2. Configuration & Repositories -->
+                <div class="mmu-guide-box">
+                    <h2>Private Repositories</h2>
+                    <p>You can host your own private repositories for plugins and themes. Follow these steps:</p>
+                    <ol>
+                        <li>Create a folder on your server (e.g. <code>/my-plugins-repo/</code>).</li>
+						<li>Upload the <strong>Plugin Index</strong> file to this folder (rename it to <code>index.php</code> if necessary).</li>
+                        <li>Upload your plugin ZIP files to this folder in the same format you would normally upload them to WordPress.</li>
+                        <li>Go to the <strong>Repositories</strong> tab in WP Master Updater.</li>
+                        <li>Enable "Private Plugin Repositories" and enter the URL of your folder (e.g. <code>https://example.com/my-plugins-repo/</code>).</li>
+                        <li>Repeat the same process for themes if necessary.</li>
+                    </ol>
+
+                    <div class="mmu-download-links">
+                        <p><strong>Download Template Files:</strong></p>
+                        <a href="<?php echo admin_url('admin-post.php?action=marrison_download_repo_template&type=plugins'); ?>" class="mmu-download-link">
+                            <span class="dashicons dashicons-download"></span> Download Plugin Index (index.php)
+                        </a>
+                        <a href="<?php echo admin_url('admin-post.php?action=marrison_download_repo_template&type=themes'); ?>" class="mmu-download-link">
+                            <span class="dashicons dashicons-download"></span> Download Theme Index (index.php)
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
         <?php
@@ -389,11 +476,8 @@ class Marrison_Master_Admin {
 
         <div class="wrap mmu-settings-wrap">
             <div class="mmu-settings-header">
-                <h1 class="mmu-settings-title">WP Master Updater Settings</h1>
-                <p class="mmu-settings-subtitle">
-                    Configure private repositories for plugins and themes and quickly check for WP Master Updater updates.
-                </p>
-            </div>
+                <?php $this->render_header('Repositories'); ?>
+                         </div>
 
             <?php 
             $errors = get_settings_errors();
@@ -1076,7 +1160,7 @@ class Marrison_Master_Admin {
             }
             
             .mmu-details-row td { 
-                background: linear-gradient(135deg, #2c3338 0%, #1d2327 100%);
+                background: #12111f;
                 padding: 25px;
                 border-bottom: 25px solid var(--bg-lighter) !important;
                 box-shadow: inset 0 4px 12px rgba(0,0,0,0.2);
@@ -1139,7 +1223,7 @@ class Marrison_Master_Admin {
         </style>
 
         <div class="wrap">
-            <h1>Connected Clients</h1>
+            <?php $this->render_header('Connected Clients'); ?>
             <div id="marrison-notices"></div>
             
             <div class="tablenav top" style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
