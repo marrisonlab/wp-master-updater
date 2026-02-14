@@ -86,17 +86,37 @@ class Marrison_Master_API {
             ]);
         }
 
-        // Return current repo configuration
+        // Return current repo configuration and injected updates
         $config = [
             'plugins_repo' => get_option('marrison_private_plugins_repo'),
             'themes_repo' => get_option('marrison_private_themes_repo')
         ];
 
+        // Get client data to extract injected updates
+        $clients = $this->core->get_clients();
+        $client_site_url = $data['site_url'];
+        $injected_updates = [];
+
+        if (isset($clients[$client_site_url])) {
+            $client_data = $clients[$client_site_url];
+            
+            // Extract injected plugin updates
+            if (!empty($client_data['plugins_need_update'])) {
+                $injected_updates['plugins'] = $client_data['plugins_need_update'];
+            }
+            
+            // Extract injected theme updates  
+            if (!empty($client_data['themes_need_update'])) {
+                $injected_updates['themes'] = $client_data['themes_need_update'];
+            }
+        }
+
         $this->finish_guard('[Marrison Sync Output] ');
         return rest_ensure_response([
             'success' => true,
             'message' => 'Data synchronized successfully',
-            'config' => $config
+            'config' => $config,
+            'injected_updates' => $injected_updates
         ]);
     }
 }

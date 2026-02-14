@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-02-14
+### Changed
+- UI distingue tra “Updates” e “Blocked” (mancanza package/credenziali).
+- Pulsante Update disabilitato quando ci sono solo update bloccati.
+- Messaggi di update includono traduzioni aggiornate e report dettagliato.
+- LED arancione per stato “updates bloccati”.
+### Fixed
+- Allineati conteggi e messaggi con il report dell’Agent.
+
 ## [1.0.13] - 2026-02-14
 ### Changed
 - Fallback su `?rest_route=` per aggiornamenti quando `/wp-json/` è bloccato.

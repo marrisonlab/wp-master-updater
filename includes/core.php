@@ -4,6 +4,12 @@ class Marrison_Master_Core {
 
     private $option_name = 'marrison_connected_clients';
 
+    private function log_master($message) {
+        $log_file = WP_CONTENT_DIR . '/wp-master-updater-debug.log';
+        $timestamp = date('Y-m-d H:i:s');
+        error_log("[$timestamp] $message\n", 3, $log_file);
+    }
+
     public function get_clients() {
         return get_option($this->option_name, []);
     }
@@ -130,30 +136,67 @@ class Marrison_Master_Core {
      * Helper to fetch and parse repo JSON
      */
     private function fetch_repo_json($url) {
+        $this->log_master("Fetching repository from: $url");
+        
         $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false]);
         if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            $this->log_master("Repository fetch failed: " . (is_wp_error($response) ? $response->get_error_message() : 'HTTP ' . wp_remote_retrieve_response_code($response)));
             return [];
         }
 
         $body = wp_remote_retrieve_body($response);
         $json = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $this->log_master("JSON decode error: " . json_last_error_msg());
+            $this->log_master("Raw response (first 500 chars): " . substr($body, 0, 500));
+        }
 
         // Fallback for packages.json convention
         if (json_last_error() !== JSON_ERROR_NONE) {
             $url_fallback = untrailingslashit($url) . '/packages.json';
+            $this->log_master("Trying fallback URL: $url_fallback");
             $response = wp_remote_get($url_fallback, ['timeout' => 15, 'sslverify' => false]);
             if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
                  $body = wp_remote_retrieve_body($response);
                  $json = json_decode($body, true);
+                 $this->log_master("Fallback successful, JSON decoded");
+            } else {
+                 $this->log_master("Fallback also failed");
             }
         }
 
-        if (!$json || !is_array($json)) return [];
+        if (!$json || !is_array($json)) {
+            $this->log_master("Invalid JSON structure or empty response");
+            return [];
+        }
+
+        // Log structure and count
+        $this->log_master("JSON structure keys: " . implode(', ', array_keys($json)));
+        if (isset($json['plugins'])) {
+            $this->log_master("Found " . count($json['plugins']) . " plugins in 'plugins' key");
+        } elseif (isset($json['packages'])) {
+            $this->log_master("Found " . count($json['packages']) . " plugins in 'packages' key");
+        } else {
+            $this->log_master("No 'plugins' or 'packages' key found, treating as direct array: " . count($json) . " items");
+        }
 
         // Normalize structure
         if (isset($json['packages'])) return $json['packages'];
         if (isset($json['plugins'])) return $json['plugins'];
-        if (isset($json['themes'])) return $json['themes'];
+        
+        // If it's a numeric array, convert to associative using slug as key
+        if (is_array($json) && isset($json[0]) && isset($json[0]['slug'])) {
+            $this->log_master("Converting numeric array to associative using slug as key");
+            $associative = [];
+            foreach ($json as $item) {
+                if (isset($item['slug'])) {
+                    $associative[$item['slug']] = $item;
+                }
+            }
+            $this->log_master("Converted " . count($associative) . " items to associative array");
+            return $associative;
+        }
         
         return $json;
     }
@@ -162,11 +205,33 @@ class Marrison_Master_Core {
      * Compare client installed items with private repo and inject updates
      */
     public function compare_and_inject_updates(&$client_data, $repo_data) {
+        $this->log_master("Starting injection process for client: " . $client_data['site_url']);
+        $this->log_master("Repository plugins available: " . count($repo_data['plugins'] ?? []));
+        $this->log_master("Repository themes available: " . count($repo_data['themes'] ?? []));
+        
+        // Log all repository plugins for debugging
+        if (!empty($repo_data['plugins'])) {
+            $this->log_master("Repository plugin slugs: " . implode(', ', array_keys($repo_data['plugins'])));
+        }
+        
+        // Log all client plugins for debugging  
+        if (!empty($client_data['plugins'])) {
+            $client_plugin_slugs = [];
+            foreach ($client_data['plugins'] as $file => $plugin) {
+                $slug = dirname($file);
+                if ($slug === '.') $slug = basename($file, '.php');
+                $client_plugin_slugs[] = $slug;
+            }
+            $this->log_master("Client plugin slugs: " . implode(', ', $client_plugin_slugs));
+        }
+        
         // Plugins
         if (!empty($repo_data['plugins']) && !empty($client_data['plugins'])) {
             foreach ($client_data['plugins'] as $file => $plugin) {
                 $slug = dirname($file); // e.g., 'my-plugin' from 'my-plugin/my-plugin.php'
                 if ($slug === '.') $slug = basename($file, '.php'); // Single file plugins
+
+                $this->log_master("Processing plugin: $file -> slug: $slug");
 
                 // Check for match in repo
                 $repo_item = $repo_data['plugins'][$slug] ?? null;
@@ -174,11 +239,15 @@ class Marrison_Master_Core {
                 // Fallback: Check if key in repo matches the full filename? Rare but possible.
                 if (!$repo_item && isset($repo_data['plugins'][$file])) {
                     $repo_item = $repo_data['plugins'][$file];
+                    $this->log_master("Found match by full filename: $file");
                 }
 
                 if ($repo_item) {
                     $new_version = $repo_item['version'] ?? $repo_item['new_version'] ?? null;
                     $current_version = $plugin['Version'];
+                    $package_url = $repo_item['package'] ?? $repo_item['download_url'] ?? '';
+
+                    $this->log_master("Plugin injection check: $file | Current: $current_version | Available: $new_version | Package: " . ($package_url ?: 'MISSING'));
 
                     if ($new_version && version_compare($current_version, $new_version, '<')) {
                         // Create update entry
@@ -191,11 +260,17 @@ class Marrison_Master_Core {
                         $client_data['plugins_need_update'][$file] = [
                             'slug' => $slug,
                             'new_version' => $new_version,
-                            'package' => $repo_item['package'] ?? $repo_item['download_url'] ?? '',
+                            'package' => $package_url,
                             'url' => $repo_item['url'] ?? '',
                             'Name' => $plugin['Name']
                         ];
+                        
+                        $this->log_master("INJECTED plugin update: $file -> $new_version (Package: " . ($package_url ? 'YES' : 'NO') . ")");
+                    } else {
+                        $this->log_master("Plugin $file is up to date or version check failed");
                     }
+                } else {
+                    $this->log_master("No repo item found for plugin: $file (slug: $slug)");
                 }
             }
         }
@@ -209,6 +284,9 @@ class Marrison_Master_Core {
                 if ($repo_item) {
                     $new_version = $repo_item['version'] ?? $repo_item['new_version'] ?? null;
                     $current_version = $theme['Version'];
+                    $package_url = $repo_item['package'] ?? $repo_item['download_url'] ?? '';
+
+                    $this->log_master("Theme injection check: $slug | Current: $current_version | Available: $new_version | Package: " . ($package_url ?: 'MISSING'));
 
                     if ($new_version && version_compare($current_version, $new_version, '<')) {
                         if (!isset($client_data['themes_need_update'])) {
@@ -218,11 +296,15 @@ class Marrison_Master_Core {
                         $client_data['themes_need_update'][$slug] = [
                             'slug' => $slug,
                             'new_version' => $new_version,
-                            'package' => $repo_item['package'] ?? $repo_item['download_url'] ?? '',
+                            'package' => $package_url,
                             'url' => $repo_item['url'] ?? '',
                             'Name' => $theme['Name']
                         ];
+                        
+                        $this->log_master("INJECTED theme update: $slug -> $new_version (Package: " . ($package_url ? 'YES' : 'NO') . ")");
                     }
+                } else {
+                    $this->log_master("No repo item found for theme: $slug");
                 }
             }
         }

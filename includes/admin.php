@@ -905,11 +905,31 @@ class Marrison_Master_Admin {
                 $msg = 'Update Error: ' . $res->get_error_message();
             } else {
                 $updated_plugins = 0;
+                $updated_translations = 0;
+                $blocked_plugins = 0;
+                $failed_plugins = 0;
                 if (is_array($res) && isset($res['updated']) && isset($res['updated']['plugins'])) {
                     $updated_plugins = intval($res['updated']['plugins']);
                 }
-                if ($updated_plugins > 0) {
+                if (is_array($res) && isset($res['updated']) && isset($res['updated']['translations'])) {
+                    $updated_translations = intval($res['updated']['translations']);
+                }
+                if (is_array($res) && isset($res['report']['plugins'])) {
+                    $blocked_plugins = isset($res['report']['plugins']['skipped_no_package']) ? count((array)$res['report']['plugins']['skipped_no_package']) : 0;
+                    $failed_plugins = isset($res['report']['plugins']['failed']) ? count((array)$res['report']['plugins']['failed']) : 0;
+                }
+
+                if ($updated_plugins > 0 || $updated_translations > 0) {
                     $msg = 'Update completed: ' . $updated_plugins . ' plugins updated';
+                    if ($updated_translations > 0) {
+                        $msg .= ', ' . $updated_translations . ' translations updated';
+                    }
+                } elseif ($blocked_plugins > 0 && $failed_plugins === 0) {
+                    $msg = 'Update blocked: ' . $blocked_plugins . ' plugins missing package/credentials';
+                } elseif ($failed_plugins > 0 && $blocked_plugins === 0) {
+                    $msg = 'Update completed with errors: ' . $failed_plugins . ' plugin updates failed';
+                } elseif ($failed_plugins > 0 && $blocked_plugins > 0) {
+                    $msg = 'Update completed with issues: ' . $failed_plugins . ' failed, ' . $blocked_plugins . ' blocked';
                 } else {
                     $msg = 'Update completed: no plugins required update';
                 }
@@ -961,9 +981,14 @@ class Marrison_Master_Admin {
                     
                     // Filter updates that are NOT ignored for the count
                     $real_updates_count = 0;
+                    $actionable_updates_count = 0;
+                    $blocked_updates_count = 0;
                     foreach ($all_plugins_updates as $p) {
                         if (!in_array($p['path'], $ignored_plugins)) {
                             $real_updates_count++;
+                            $can_update = !isset($p['can_update']) || !empty($p['can_update']);
+                            if ($can_update) $actionable_updates_count++;
+                            else $blocked_updates_count++;
                         }
                     }
 
@@ -984,9 +1009,12 @@ class Marrison_Master_Admin {
                     } elseif ($is_stale) {
                         $led_color = '#a7aaad'; // Grey for unknown
                         $led_title = 'No data - run sync';
-                    } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
+                    } elseif ($actionable_updates_count > 0 || $t_update_count > 0 || $trans_update) {
                         $led_color = '#dc3232'; // Red
                         $led_title = 'Updates available';
+                    } elseif ($blocked_updates_count > 0) {
+                        $led_color = '#dba617';
+                        $led_title = 'Updates blocked (missing package/credentials)';
                     } elseif ($inactive_count > 0) {
                         $led_color = '#f0c330'; // Yellow
                         $led_title = 'There are ' . $inactive_count . ' inactive plugins';
@@ -1006,9 +1034,13 @@ class Marrison_Master_Admin {
                     <td>
                         <?php 
                         if (!$is_stale) {
-                            echo $real_updates_count > 0 
-                                ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>' 
-                                : '<span style="color:#46b450">Updated</span>';
+                            if ($actionable_updates_count > 0) {
+                                echo '<span style="color:#dc3232">Updates: ' . $actionable_updates_count . '</span>';
+                            } elseif ($blocked_updates_count > 0) {
+                                echo '<span style="color:#dba617">Blocked: ' . $blocked_updates_count . '</span>';
+                            } else {
+                                echo '<span style="color:#46b450">Updated</span>';
+                            }
                             if ($p_update_count > $real_updates_count) {
                                 echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>';
                             }
@@ -1030,7 +1062,7 @@ class Marrison_Master_Admin {
                             <form style="display:inline;" onsubmit="return false;">
                                 <input type="hidden" name="client_url" value="<?php echo esc_attr($url); ?>">
                                 <button type="button" value="sync" class="button button-secondary marrison-action-btn">Sync</button>
-                                <button type="button" value="update" class="button button-primary marrison-action-btn" <?php echo ($is_green || $is_yellow || $is_black) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>Update</button>
+                                <button type="button" value="update" class="button button-primary marrison-action-btn" <?php echo ($is_green || $is_yellow || $is_black || ($actionable_updates_count === 0 && $t_update_count === 0 && !$trans_update)) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>Update</button>
                                 <button type="button" value="delete" class="button button-link-delete marrison-action-btn" style="color: #dc3232;">Delete</button>
                             </form>
                             <span class="mmu-index"><?php echo $i++; ?></span>
@@ -1150,6 +1182,7 @@ class Marrison_Master_Admin {
                                     <?php foreach ($all_updates as $p): ?>
                                         <?php 
                                             $is_ignored = in_array($p['path'], $ignored_plugins);
+                                            $can_update = !isset($p['can_update']) || !empty($p['can_update']);
                                             $card_bg = $is_ignored ? 'rgba(128,128,128,0.1)' : 'rgba(255,128,128,0.1)';
                                             $card_border = $is_ignored ? '#808080' : '#ff8080';
                                             $title_color = $is_ignored ? '#ccc' : '#fff';
@@ -1159,6 +1192,9 @@ class Marrison_Master_Admin {
                                                 <div>
                                                     <strong style="color: <?php echo $title_color; ?>; display: block;"><?php echo esc_html($p['name']); ?></strong>
                                                     <span style="color: #ccc; font-size: 0.85em;">v. <?php echo esc_html($p['version']); ?> → v. <?php echo esc_html($p['new_version']); ?></span>
+                                                    <?php if (!$is_ignored && !$can_update): ?>
+                                                        <div style="color:#dba617; font-size: 0.85em; margin-top: 4px;">Blocked: missing package/credentials</div>
+                                                    <?php endif; ?>
                                                 </div>
                                                 <div style="text-align:right;">
                                                     <label style="font-size: 11px; color: #aaa; cursor: pointer; display: flex; align-items: center;">
