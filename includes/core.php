@@ -232,23 +232,40 @@ class Marrison_Master_Core {
      * Trigger remote update with cache clearing and translation support
      */
     public function trigger_remote_update($client_url) {
-        $response = wp_remote_post($client_url . '/wp-json/wp-agent-updater/v1/update', [
+        $primary_endpoint = trailingslashit($client_url) . 'wp-json/wp-agent-updater/v1/update';
+        $args = [
             'body' => [
                 'clear_cache' => true,
                 'update_translations' => true
             ],
             'timeout' => 300,
             'sslverify' => false
-        ]);
+        ];
+        $response = wp_remote_post($primary_endpoint, $args);
 
         if (is_wp_error($response)) {
             return $response;
         }
 
         $code = wp_remote_retrieve_response_code($response);
-        if ($code !== 200) {
-            $this->trigger_remote_sync($client_url, false);
-            return new WP_Error('http_error', "Remote server returned code $code");
+        $content_type = wp_remote_retrieve_header($response, 'content-type');
+        $is_json = stripos($content_type, 'application/json') !== false;
+
+        // Fallback to non-pretty REST route if primary fails (e.g., servers without /wp-json support)
+        if ($code !== 200 || !$is_json) {
+            $fallback_endpoint = trailingslashit($client_url) . '?rest_route=/wp-agent-updater/v1/update';
+            $response = wp_remote_post($fallback_endpoint, $args);
+            if (is_wp_error($response)) {
+                return $response;
+            }
+            $code = wp_remote_retrieve_response_code($response);
+            $content_type = wp_remote_retrieve_header($response, 'content-type');
+            $is_json = stripos($content_type, 'application/json') !== false;
+
+            if ($code !== 200 || !$is_json) {
+                $this->trigger_remote_sync($client_url, false);
+                return new WP_Error('http_error', "Remote server returned code $code");
+            }
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);

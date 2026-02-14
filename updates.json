@@ -1,6 +1,6 @@
 {
     "slug": "wp-master-updater",
-    "version": "1.0.12",
+    "version": "1.0.13",
     "name": "WP Master Updater",
     "download_url": "https://github.com/marrisonlab/wp-master-updater/archive/refs/heads/master.zip",
     "sections": {

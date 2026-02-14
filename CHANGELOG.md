@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-02-14
+### Changed
+- Fallback su `?rest_route=` per aggiornamenti quando `/wp-json/` è bloccato.
+- Messaggi di update accurati: mostrano quanti plugin sono stati aggiornati.
+### Fixed
+- “Mass Update” non più bloccato dopo “Clear Master Cache”.
+
 ## [1.0.12] - 2026-02-14
 ### Changed
 - Allineamento versione post-rollback; aggiornato update.json e metadata.

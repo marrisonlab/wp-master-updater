@@ -904,7 +904,15 @@ class Marrison_Master_Admin {
                 $success = false;
                 $msg = 'Update Error: ' . $res->get_error_message();
             } else {
-                $msg = 'Update completed (plugins, themes, and translations)';
+                $updated_plugins = 0;
+                if (is_array($res) && isset($res['updated']) && isset($res['updated']['plugins'])) {
+                    $updated_plugins = intval($res['updated']['plugins']);
+                }
+                if ($updated_plugins > 0) {
+                    $msg = 'Update completed: ' . $updated_plugins . ' plugins updated';
+                } else {
+                    $msg = 'Update completed: no plugins required update';
+                }
             }
         } elseif ($action === 'restore') {
             if (empty($backup_file)) {
@@ -1382,15 +1390,8 @@ class Marrison_Master_Admin {
         
             function updateBulkUpdateAvailability() {
                 var $ = jQuery;
-                var disable = false;
-                $('#marrison-clients-body tr.mmu-main-row').each(function() {
-                    var lastSyncText = $(this).find('td:nth-child(6)').text().trim();
-                    if (lastSyncText === '-' || lastSyncText === '') {
-                        disable = true;
-                        return false;
-                    }
-                });
-                $('#marrison-bulk-update').prop('disabled', disable);
+                var candidates = $('#marrison-clients-body .marrison-action-btn[value="update"]:not(:disabled)').length;
+                $('#marrison-bulk-update').prop('disabled', candidates === 0);
             }
         
             function updateProgress(current, total, message, callback) {
