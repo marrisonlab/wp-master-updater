@@ -946,7 +946,7 @@ class Marrison_Master_Admin {
         if (empty($clients)): ?>
             <tr><td colspan="7">No clients connected.</td></tr>
         <?php else: ?>
-            <?php foreach ($clients as $url => $data): ?>
+            <?php $i = 1; foreach ($clients as $url => $data): ?>
                 <?php
                     $ignored_plugins = $data['ignored_plugins'] ?? [];
                     $all_plugins_updates = $data['plugins_need_update'] ?? [];
@@ -964,6 +964,7 @@ class Marrison_Master_Admin {
                     $trans_update = !empty($data['translations_need_update']);
                     $inactive_count = count($data['plugins_inactive'] ?? []);
                     $status = $data['status'] ?? 'active';
+                    $is_stale = empty($data['last_sync']) || ($data['last_sync'] === '-');
                     
                     // LED Logic
                     $led_color = '#46b450'; // Green
@@ -972,6 +973,9 @@ class Marrison_Master_Admin {
                     if ($status === 'unreachable') {
                         $led_color = '#000000'; // Black
                         $led_title = 'Agent unreachable';
+                    } elseif ($is_stale) {
+                        $led_color = '#a7aaad'; // Grey for unknown
+                        $led_title = 'No data - run sync';
                     } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
                         $led_color = '#dc3232'; // Red
                         $led_title = 'Updates available';
@@ -992,20 +996,37 @@ class Marrison_Master_Admin {
                     <td><strong style="display: block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo esc_attr($data['site_name']); ?>"><?php echo esc_html($data['site_name']); ?></strong></td>
                     <td><a href="<?php echo esc_url($url); ?>" target="_blank"><?php echo esc_html($url); ?></a></td>
                     <td>
-                        <?php echo $real_updates_count > 0 ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>' : '<span style="color:#46b450">Updated</span>'; ?>
-                        <?php if ($p_update_count > $real_updates_count) echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>'; ?>
+                        <?php 
+                        if (!$is_stale) {
+                            echo $real_updates_count > 0 
+                                ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>' 
+                                : '<span style="color:#46b450">Updated</span>';
+                            if ($p_update_count > $real_updates_count) {
+                                echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>';
+                            }
+                        }
+                        ?>
                     </td>
                     <td>
-                        <?php echo $t_update_count > 0 ? '<span style="color:#dc3232">Updates: ' . $t_update_count . '</span>' : '<span style="color:#46b450">Updated</span>'; ?>
+                        <?php 
+                        if (!$is_stale) {
+                            echo $t_update_count > 0 
+                                ? '<span style="color:#dc3232">Updates: ' . $t_update_count . '</span>' 
+                                : '<span style="color:#46b450">Updated</span>';
+                        }
+                        ?>
                     </td>
                     <td><?php echo esc_html($data['last_sync'] ?? '-'); ?></td>
                     <td>
-                        <form style="display:inline;" onsubmit="return false;">
-                            <input type="hidden" name="client_url" value="<?php echo esc_attr($url); ?>">
-                            <button type="button" value="sync" class="button button-secondary marrison-action-btn">Sync</button>
-                            <button type="button" value="update" class="button button-primary marrison-action-btn" <?php echo ($is_green || $is_yellow || $is_black) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>Update</button>
-                            <button type="button" value="delete" class="button button-link-delete marrison-action-btn" style="color: #dc3232;">Delete</button>
-                        </form>
+                        <div class="mmu-actions-cell">
+                            <form style="display:inline;" onsubmit="return false;">
+                                <input type="hidden" name="client_url" value="<?php echo esc_attr($url); ?>">
+                                <button type="button" value="sync" class="button button-secondary marrison-action-btn">Sync</button>
+                                <button type="button" value="update" class="button button-primary marrison-action-btn" <?php echo ($is_green || $is_yellow || $is_black) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>Update</button>
+                                <button type="button" value="delete" class="button button-link-delete marrison-action-btn" style="color: #dc3232;">Delete</button>
+                            </form>
+                            <span class="mmu-index"><?php echo $i++; ?></span>
+                        </div>
                     </td>
                 </tr>
                 
@@ -1046,14 +1067,16 @@ class Marrison_Master_Admin {
                             <!-- Translations -->
                             <div class="mmu-details-section" style="flex: 1;">
                                 <h4>Translations</h4>
-                                <?php if ($trans_update): ?>
-                                    <div style="color: #ff8080; font-weight: bold;">
-                                        <span class="dashicons dashicons-translation"></span> Translations to update
-                                    </div>
-                                <?php else: ?>
-                                    <div style="color: #46b450;">
-                                        <span class="dashicons dashicons-yes"></span> Translations updated
-                                    </div>
+                                <?php if (!$is_stale): ?>
+                                    <?php if ($trans_update): ?>
+                                        <div style="color: #ff8080; font-weight: bold;">
+                                            <span class="dashicons dashicons-translation"></span> Translations to update
+                                        </div>
+                                    <?php else: ?>
+                                        <div style="color: #46b450;">
+                                            <span class="dashicons dashicons-yes"></span> Translations updated
+                                        </div>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </div>
 
@@ -1287,9 +1310,33 @@ class Marrison_Master_Admin {
                 opacity: 0.8;
             }
             
+            .mmu-index {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 22px;
+                height: 22px;
+                border-radius: 50%;
+                border: 1px solid var(--primary-color);
+                color: var(--primary-color);
+                background: #fff;
+                font-weight: 600;
+                font-size: 12px;
+                line-height: 22px;
+                vertical-align: middle;
+                margin-right: 10px;
+            }
+            
             .button.loading {
                 opacity: 0.7;
                 cursor: wait;
+            }
+            
+            .mmu-actions-cell {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
             }
         </style>
 
@@ -1332,6 +1379,19 @@ class Marrison_Master_Admin {
         var marrison_vars = { 
             nonce: '<?php echo wp_create_nonce('marrison_master_nonce'); ?>' 
         };
+        
+            function updateBulkUpdateAvailability() {
+                var $ = jQuery;
+                var disable = false;
+                $('#marrison-clients-body tr.mmu-main-row').each(function() {
+                    var lastSyncText = $(this).find('td:nth-child(6)').text().trim();
+                    if (lastSyncText === '-' || lastSyncText === '') {
+                        disable = true;
+                        return false;
+                    }
+                });
+                $('#marrison-bulk-update').prop('disabled', disable);
+            }
         
             function updateProgress(current, total, message, callback) {
                 var $ = jQuery;
@@ -1419,6 +1479,16 @@ class Marrison_Master_Admin {
                 if(cmd === 'sync' || cmd === 'update' || cmd === 'restore') {
                     btn.text('In progress...');
                     window.marrisonUpdateProgress(10, 100, progressMessage);
+                    var progressCurrent = 10;
+                    progressIntervalId = setInterval(function() {
+                        if (progressCurrent < 92) {
+                            progressCurrent += (cmd === 'update' ? 3 : 4);
+                            window.marrisonUpdateProgress(progressCurrent, 100, progressMessage);
+                        } else {
+                            clearInterval(progressIntervalId);
+                            progressIntervalId = null;
+                        }
+                    }, 400);
                 }
 
                 $.post(ajaxurl, {
@@ -1441,6 +1511,7 @@ class Marrison_Master_Admin {
                         console.error('UI update failed', e);
                     } finally {
                         try { bindEvents(); } catch (e) {}
+                        try { updateBulkUpdateAvailability(); } catch(e) {}
                     }
                 }).fail(function() {
                     $('#marrison-notices').html('<div class="notice notice-error is-dismissible"><p>Network error.</p></div>');
@@ -1477,7 +1548,7 @@ class Marrison_Master_Admin {
                             };
                         }
                         
-                        window.marrisonUpdateProgress(100, 100, cmd + ' su ' + clientName + ': ' + statusMsg, onCompletionCallback);
+                        window.marrisonUpdateProgress(100, 100, cmd + ' on ' + clientName + ': ' + statusMsg, onCompletionCallback);
 
                     } else {
                         window.marrisonUpdateProgress(0, 0);
@@ -1612,6 +1683,7 @@ class Marrison_Master_Admin {
                                 if (response.success && response.data.html) {
                                     $('#marrison-clients-body').html(response.data.html);
                                     bindEvents();
+                                updateBulkUpdateAvailability();
                                 }
                                 $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>Mass sync completed. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
                                 updateProgress(total, total, 'Completed!');
@@ -1736,6 +1808,7 @@ class Marrison_Master_Admin {
                             if (response.data.html) {
                                 $('#marrison-clients-body').html(response.data.html);
                                 bindEvents();
+                                updateBulkUpdateAvailability();
                             }
                         } else {
                             $('#marrison-notices').html('<div class="notice notice-error is-dismissible"><p>Cache clearing error</p></div>');

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-02-14
+### Changed
+- Migliorata barra di avanzamento: avanzamento fluido durante sync/update.
+- Numero progressivo spostato a destra, allineato verticalmente, con badge.
+- Nascondi etichette “Updated”/“Translations updated” quando i dati sono azzerati.
+- LED grigio e messaggio “No data - run sync” in stato non affidabile.
+- “Mass Update” disabilitato fino a nuova “Mass Sync” dopo clear cache.
+
 ## [1.0.9] - 2026-02-13
 ### Added
 - Added functionality to ignore specific plugins from update checks.
