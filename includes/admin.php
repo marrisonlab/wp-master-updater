@@ -1348,6 +1348,7 @@ class Marrison_Master_Admin {
                 <div class="actions">
                     <button id="marrison-bulk-sync" class="button button-primary">Mass Sync</button>
                     <button id="marrison-bulk-update" class="button button-secondary" style="margin: 0 5px;">Mass Update</button>
+                    <button id="marrison-bulk-abort" class="button button-secondary" style="margin: 0 5px; color:#dc3232; border-color:#dc3232; display:none;">Abort</button>
                     <button id="marrison-clear-cache" class="button button-secondary">Clear Master Cache</button>
                 </div>
                 <div id="marrison-progress-wrap" style="display:none; flex: 1; max-width: 400px; border: 1px solid #c3c4c7; height: 24px; background: #fff; position: relative; border-radius: 4px; overflow: hidden;">
@@ -1660,11 +1661,13 @@ class Marrison_Master_Admin {
                     if (!confirm('Start sync on all ' + clients.length + ' clients?')) return;
 
                     window.isBulkRunning = true;
+                    window.isAbortRequested = false;
                     var bulkSyncBtn = $(this);
                     var originalText = bulkSyncBtn.text();
                     bulkSyncBtn.prop('disabled', true);
                     $('.marrison-action-btn').prop('disabled', true);
                     $('#marrison-notices').empty();
+                    $('#marrison-bulk-abort').show().prop('disabled', false).text('Abort');
 
                     var total = clients.length;
                     var current = 0;
@@ -1674,6 +1677,27 @@ class Marrison_Master_Admin {
                     updateProgress(0, total, 'Starting mass sync...');
                     
                     function syncNext() {
+                        if (window.isAbortRequested) {
+                            $.post(ajaxurl, {
+                                action: 'marrison_client_action',
+                                cmd: 'noop',
+                                nonce: marrison_vars.nonce
+                            }, function(response) {
+                                if (response.success && response.data.html) {
+                                    $('#marrison-clients-body').html(response.data.html);
+                                    bindEvents();
+                                    updateBulkUpdateAvailability();
+                                }
+                                $('#marrison-notices').html('<div class="notice notice-warning is-dismissible"><p>Mass sync aborted. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
+                                updateProgress(current, total, 'Aborted');
+                            }).always(function() {
+                                window.isBulkRunning = false;
+                                bulkSyncBtn.prop('disabled', false).text(originalText);
+                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
+                                $('.marrison-action-btn').prop('disabled', false);
+                            });
+                            return;
+                        }
                         if (current >= total) {
                             $.post(ajaxurl, {
                                 action: 'marrison_client_action',
@@ -1690,6 +1714,7 @@ class Marrison_Master_Admin {
                             }).always(function() {
                                 window.isBulkRunning = false;
                                 bulkSyncBtn.prop('disabled', false).text(originalText);
+                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
                             });
                             return;
                         }
@@ -1697,7 +1722,7 @@ class Marrison_Master_Admin {
                         var clientUrl = clients[current];
                         updateProgress(current, total, 'Sync in progress: ' + (current + 1) + '/' + total);
                         
-                        $.post(ajaxurl, {
+                        window.currentBulkRequest = $.post(ajaxurl, {
                             action: 'marrison_client_action',
                             cmd: 'sync',
                             client_url: clientUrl,
@@ -1738,11 +1763,13 @@ class Marrison_Master_Admin {
                     if (!confirm('Start update on ' + clients.length + ' clients?')) return;
 
                     window.isBulkRunning = true;
+                    window.isAbortRequested = false;
                     var bulkUpdateBtn = $(this);
                     var originalText = bulkUpdateBtn.text();
                     bulkUpdateBtn.prop('disabled', true);
                     $('.marrison-action-btn').prop('disabled', true);
                     $('#marrison-notices').empty();
+                    $('#marrison-bulk-abort').show().prop('disabled', false).text('Abort');
 
                     var total = clients.length;
                     var current = 0;
@@ -1752,6 +1779,27 @@ class Marrison_Master_Admin {
                     updateProgress(0, total, 'Starting mass update...');
                     
                     function updateNext() {
+                        if (window.isAbortRequested) {
+                            $.post(ajaxurl, {
+                                action: 'marrison_client_action',
+                                cmd: 'noop',
+                                nonce: marrison_vars.nonce
+                            }, function(response) {
+                                if (response.success && response.data.html) {
+                                    $('#marrison-clients-body').html(response.data.html);
+                                    bindEvents();
+                                    updateBulkUpdateAvailability();
+                                }
+                                $('#marrison-notices').html('<div class="notice notice-warning is-dismissible"><p>Mass update aborted. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
+                                updateProgress(current, total, 'Aborted');
+                            }).always(function() {
+                                window.isBulkRunning = false;
+                                bulkUpdateBtn.prop('disabled', false).text(originalText);
+                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
+                                $('.marrison-action-btn').prop('disabled', false);
+                            });
+                            return;
+                        }
                         if (current >= total) {
                             $.post(ajaxurl, {
                                 action: 'marrison_client_action',
@@ -1767,6 +1815,7 @@ class Marrison_Master_Admin {
                             }).always(function() {
                                 window.isBulkRunning = false;
                                 bulkUpdateBtn.prop('disabled', false).text(originalText);
+                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
                             });
                             return;
                         }
@@ -1774,7 +1823,7 @@ class Marrison_Master_Admin {
                         var clientUrl = clients[current];
                         updateProgress(current, total, 'Update in progress: ' + (current + 1) + '/' + total);
                         
-                        $.post(ajaxurl, {
+                        window.currentBulkRequest = $.post(ajaxurl, {
                             action: 'marrison_client_action',
                             cmd: 'update',
                             client_url: clientUrl,
@@ -1792,6 +1841,18 @@ class Marrison_Master_Admin {
                     }
                     
                     updateNext();
+                });
+                
+                $('#marrison-bulk-abort').on('click', function(e) {
+                    e.preventDefault();
+                    if (!window.isBulkRunning) return;
+                    window.isAbortRequested = true;
+                    $(this).prop('disabled', true).text('Aborting...');
+                    try {
+                        if (window.currentBulkRequest && typeof window.currentBulkRequest.abort === 'function') {
+                            window.currentBulkRequest.abort();
+                        }
+                    } catch (err) {}
                 });
                 
                 $('#marrison-clear-cache').on('click', function(e) {
