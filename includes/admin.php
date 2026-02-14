@@ -12,7 +12,6 @@ class Marrison_Master_Admin {
         add_action('wp_ajax_marrison_client_action', [$this, 'handle_ajax_action']);
         add_action('wp_ajax_marrison_master_clear_cache', [$this, 'handle_clear_cache']);
         add_action('wp_ajax_marrison_fetch_repo_data', [$this, 'handle_fetch_repo_data']);
-        add_action('wp_ajax_marrison_remote_deploy', [$this, 'handle_remote_deploy']);
         add_action('wp_ajax_marrison_toggle_ignore_plugin', [$this, 'handle_toggle_ignore_plugin']);
         add_action('admin_post_marrison_download_repo_template', [$this, 'handle_download_repo_template']);
 
@@ -1347,10 +1346,8 @@ class Marrison_Master_Admin {
             
             <div class="tablenav top" style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
                 <div class="actions">
-                    <button id="marrison-add-site" class="button button-secondary" style="margin-right: 5px;">Aggiungi sito</button>
                     <button id="marrison-bulk-sync" class="button button-primary">Mass Sync</button>
                     <button id="marrison-bulk-update" class="button button-secondary" style="margin: 0 5px;">Mass Update</button>
-                    <button id="marrison-bulk-abort" class="button button-secondary" style="margin: 0 5px; color:#dc3232; border-color:#dc3232; display:none;">Abort</button>
                     <button id="marrison-clear-cache" class="button button-secondary">Clear Master Cache</button>
                 </div>
                 <div id="marrison-progress-wrap" style="display:none; flex: 1; max-width: 400px; border: 1px solid #c3c4c7; height: 24px; background: #fff; position: relative; border-radius: 4px; overflow: hidden;">
@@ -1376,30 +1373,6 @@ class Marrison_Master_Admin {
                     <?php echo $this->render_clients_table_body($clients); ?>
                 </tbody>
             </table>
-            <div id="marrison-deploy-modal" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 10000;">
-                <div style="background:#fff; width: 480px; max-width: 90%; margin: 10% auto; border-radius:8px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);">
-                    <div style="padding:16px; border-bottom:1px solid #e5e5e5; font-weight:600;">Remote Deployment</div>
-                    <div style="padding:16px;">
-                        <div style="margin-bottom:10px;">
-                            <label for="marrison-deploy-url" style="display:block; font-weight:600;">URL sito</label>
-                            <input type="url" id="marrison-deploy-url" placeholder="https://example.com" style="width:100%;">
-                        </div>
-                        <div style="margin-bottom:10px;">
-                            <label for="marrison-deploy-user" style="display:block; font-weight:600;">Username WP</label>
-                            <input type="text" id="marrison-deploy-user" style="width:100%;">
-                        </div>
-                        <div style="margin-bottom:16px;">
-                            <label for="marrison-deploy-pass" style="display:block; font-weight:600;">Password WP</label>
-                            <input type="password" id="marrison-deploy-pass" style="width:100%;">
-                        </div>
-                        <div style="display:flex; justify-content:flex-end; gap:10px;">
-                            <button id="marrison-deploy-cancel" class="button">Annulla</button>
-                            <button id="marrison-deploy-submit" class="button button-primary">Aggiungi sito</button>
-                        </div>
-                        <div id="marrison-deploy-status" style="margin-top:10px; font-size:12px;"></div>
-                    </div>
-                </div>
-            </div>
         </div>
         
         <script>
@@ -1617,54 +1590,6 @@ class Marrison_Master_Admin {
                     if (window.isBulkRunning) return; 
                     performClientAction(this);
                 });
-                
-                $('#marrison-add-site').off('click').on('click', function(e) {
-                    e.preventDefault();
-                    $('#marrison-deploy-status').text('');
-                    $('#marrison-deploy-url, #marrison-deploy-user, #marrison-deploy-pass').val('');
-                    $('#marrison-deploy-submit').prop('disabled', false).text('Aggiungi sito');
-                    $('#marrison-deploy-modal').show();
-                });
-                $('#marrison-deploy-cancel').off('click').on('click', function(e) {
-                    e.preventDefault();
-                    $('#marrison-deploy-modal').hide();
-                });
-                $('#marrison-deploy-submit').off('click').on('click', function(e) {
-                    e.preventDefault();
-                    var url = $('#marrison-deploy-url').val().trim();
-                    var user = $('#marrison-deploy-user').val().trim();
-                    var pass = $('#marrison-deploy-pass').val();
-                    if (!url || !user || !pass) {
-                        $('#marrison-deploy-status').css('color','#dc3232').text('Compila tutti i campi');
-                        return;
-                    }
-                    $('#marrison-deploy-submit').prop('disabled', true).text('In corso...');
-                    $('#marrison-deploy-status').css('color','#646970').text('Connessione al sito e installazione Agent...');
-                    $.post(ajaxurl, {
-                        action: 'marrison_remote_deploy',
-                        nonce: marrison_vars.nonce,
-                        target_url: url,
-                        target_user: user,
-                        target_pass: pass
-                    }, function(response) {
-                        if (response.success) {
-                            $('#marrison-deploy-status').css('color','#46b450').text(response.data.message || 'Operazione completata');
-                            try { 
-                                if (response.data.html) {
-                                    $('#marrison-clients-body').html(response.data.html);
-                                    bindEvents();
-                                }
-                            } catch(e) {}
-                            setTimeout(function(){ $('#marrison-deploy-modal').hide(); }, 1500);
-                        } else {
-                            $('#marrison-deploy-status').css('color','#dc3232').text((response.data && response.data.message) ? response.data.message : 'Errore');
-                            $('#marrison-deploy-submit').prop('disabled', false).text('Aggiungi sito');
-                        }
-                    }).fail(function() {
-                        $('#marrison-deploy-status').css('color','#dc3232').text('Errore di connessione');
-                        $('#marrison-deploy-submit').prop('disabled', false).text('Aggiungi sito');
-                    });
-                });
             }
 
             jQuery(function($) {
@@ -1735,13 +1660,11 @@ class Marrison_Master_Admin {
                     if (!confirm('Start sync on all ' + clients.length + ' clients?')) return;
 
                     window.isBulkRunning = true;
-                    window.isAbortRequested = false;
                     var bulkSyncBtn = $(this);
                     var originalText = bulkSyncBtn.text();
                     bulkSyncBtn.prop('disabled', true);
                     $('.marrison-action-btn').prop('disabled', true);
                     $('#marrison-notices').empty();
-                    $('#marrison-bulk-abort').show().prop('disabled', false).text('Abort');
 
                     var total = clients.length;
                     var current = 0;
@@ -1751,28 +1674,6 @@ class Marrison_Master_Admin {
                     updateProgress(0, total, 'Starting mass sync...');
                     
                     function syncNext() {
-                        if (window.isAbortRequested) {
-                            $.post(ajaxurl, {
-                                action: 'marrison_client_action',
-                                cmd: 'noop',
-                                nonce: marrison_vars.nonce
-                            }, function(response) {
-                                if (response.success && response.data.html) {
-                                    $('#marrison-clients-body').html(response.data.html);
-                                    bindEvents();
-                                    updateBulkUpdateAvailability();
-                                }
-                                $('#marrison-notices').html('<div class="notice notice-warning is-dismissible"><p>Mass sync aborted. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
-                                updateProgress(current, total, 'Aborted');
-                            }).always(function() {
-                                window.isBulkRunning = false;
-                                bulkSyncBtn.prop('disabled', false).text(originalText);
-                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
-                                $('.marrison-action-btn').prop('disabled', false);
-                                try { window.marrisonUpdateProgress(0, 0); } catch(e) {}
-                            });
-                            return;
-                        }
                         if (current >= total) {
                             $.post(ajaxurl, {
                                 action: 'marrison_client_action',
@@ -1789,7 +1690,6 @@ class Marrison_Master_Admin {
                             }).always(function() {
                                 window.isBulkRunning = false;
                                 bulkSyncBtn.prop('disabled', false).text(originalText);
-                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
                             });
                             return;
                         }
@@ -1797,7 +1697,7 @@ class Marrison_Master_Admin {
                         var clientUrl = clients[current];
                         updateProgress(current, total, 'Sync in progress: ' + (current + 1) + '/' + total);
                         
-                        window.currentBulkRequest = $.post(ajaxurl, {
+                        $.post(ajaxurl, {
                             action: 'marrison_client_action',
                             cmd: 'sync',
                             client_url: clientUrl,
@@ -1838,13 +1738,11 @@ class Marrison_Master_Admin {
                     if (!confirm('Start update on ' + clients.length + ' clients?')) return;
 
                     window.isBulkRunning = true;
-                    window.isAbortRequested = false;
                     var bulkUpdateBtn = $(this);
                     var originalText = bulkUpdateBtn.text();
                     bulkUpdateBtn.prop('disabled', true);
                     $('.marrison-action-btn').prop('disabled', true);
                     $('#marrison-notices').empty();
-                    $('#marrison-bulk-abort').show().prop('disabled', false).text('Abort');
 
                     var total = clients.length;
                     var current = 0;
@@ -1854,27 +1752,6 @@ class Marrison_Master_Admin {
                     updateProgress(0, total, 'Starting mass update...');
                     
                     function updateNext() {
-                        if (window.isAbortRequested) {
-                            $.post(ajaxurl, {
-                                action: 'marrison_client_action',
-                                cmd: 'noop',
-                                nonce: marrison_vars.nonce
-                            }, function(response) {
-                                if (response.success && response.data.html) {
-                                    $('#marrison-clients-body').html(response.data.html);
-                                    bindEvents();
-                                    updateBulkUpdateAvailability();
-                                }
-                                $('#marrison-notices').html('<div class="notice notice-warning is-dismissible"><p>Mass update aborted. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
-                                updateProgress(current, total, 'Aborted');
-                            }).always(function() {
-                                window.isBulkRunning = false;
-                                bulkUpdateBtn.prop('disabled', false).text(originalText);
-                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
-                                $('.marrison-action-btn').prop('disabled', false);
-                            });
-                            return;
-                        }
                         if (current >= total) {
                             $.post(ajaxurl, {
                                 action: 'marrison_client_action',
@@ -1890,8 +1767,6 @@ class Marrison_Master_Admin {
                             }).always(function() {
                                 window.isBulkRunning = false;
                                 bulkUpdateBtn.prop('disabled', false).text(originalText);
-                                $('#marrison-bulk-abort').hide().prop('disabled', false).text('Abort');
-                                try { window.marrisonUpdateProgress(0, 0); } catch(e) {}
                             });
                             return;
                         }
@@ -1899,7 +1774,7 @@ class Marrison_Master_Admin {
                         var clientUrl = clients[current];
                         updateProgress(current, total, 'Update in progress: ' + (current + 1) + '/' + total);
                         
-                        window.currentBulkRequest = $.post(ajaxurl, {
+                        $.post(ajaxurl, {
                             action: 'marrison_client_action',
                             cmd: 'update',
                             client_url: clientUrl,
@@ -1917,19 +1792,6 @@ class Marrison_Master_Admin {
                     }
                     
                     updateNext();
-                });
-                
-                $('#marrison-bulk-abort').on('click', function(e) {
-                    e.preventDefault();
-                    if (!window.isBulkRunning) return;
-                    window.isAbortRequested = true;
-                    $(this).prop('disabled', true).text('Aborting...');
-                    try {
-                        if (window.currentBulkRequest && typeof window.currentBulkRequest.abort === 'function') {
-                            window.currentBulkRequest.abort();
-                        }
-                    } catch (err) {}
-                    try { window.marrisonUpdateProgress(0, 0); } catch(e) {}
                 });
                 
                 $('#marrison-clear-cache').on('click', function(e) {
@@ -1958,265 +1820,6 @@ class Marrison_Master_Admin {
             });
         </script>
         <?php
-    }
-
-    public function handle_remote_deploy() {
-        check_ajax_referer('marrison_master_nonce', 'nonce');
-        $target_url = isset($_POST['target_url']) ? esc_url_raw($_POST['target_url']) : '';
-        $target_user = isset($_POST['target_user']) ? sanitize_text_field($_POST['target_user']) : '';
-        $target_pass = isset($_POST['target_pass']) ? $_POST['target_pass'] : '';
-        if (!$target_url || !$target_user || !$target_pass) {
-            wp_send_json_error(['message' => 'Parametri mancanti']);
-        }
-        $base = untrailingslashit($target_url);
-        $cookie = wp_tempnam('marrison_cookie');
-        // Usa sempre lo ZIP dell'Agent, evitando qualsiasi ambiguità con il Master
-        $agent_download_url = 'https://github.com/marrisonlab/wp-agent-updater/archive/refs/heads/master.zip';
-        $tmpzip = wp_tempnam('agent.zip');
-        $get_zip = wp_remote_get($agent_download_url, ['timeout' => 60, 'sslverify' => false]);
-        if (is_wp_error($get_zip) || wp_remote_retrieve_response_code($get_zip) !== 200) {
-            @unlink($cookie);
-            @unlink($tmpzip);
-            wp_send_json_error(['message' => 'Download Agent fallito']);
-        }
-        $zip_body = wp_remote_retrieve_body($get_zip);
-        if (!$zip_body) {
-            @unlink($cookie);
-            @unlink($tmpzip);
-            wp_send_json_error(['message' => 'Archivio Agent vuoto']);
-        }
-        file_put_contents($tmpzip, $zip_body);
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $base . '/wp-login.php',
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query(['log' => $target_user, 'pwd' => $target_pass, 'redirect_to' => $base . '/wp-admin/', 'testcookie' => 1]),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_COOKIEJAR => $cookie,
-            CURLOPT_COOKIEFILE => $cookie,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
-            CURLOPT_USERAGENT => 'Mozilla/5.0'
-        ]);
-        $login_res = curl_exec($ch);
-        if ($login_res === false) {
-            curl_close($ch);
-            @unlink($cookie);
-            @unlink($tmpzip);
-            wp_send_json_error(['message' => 'Login fallito']);
-        }
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $base . '/wp-admin/plugin-install.php?tab=upload',
-            CURLOPT_HTTPGET => true,
-            CURLOPT_POST => false
-        ]);
-        $upload_page = curl_exec($ch);
-        if (!$upload_page) {
-            curl_close($ch);
-            @unlink($cookie);
-            @unlink($tmpzip);
-            wp_send_json_error(['message' => 'Pagina upload non disponibile']);
-        }
-        preg_match('/name="_wpnonce"\s+value="([^"]+)"/', $upload_page, $m);
-        $nonce = $m[1] ?? '';
-        if (!$nonce) {
-            curl_close($ch);
-            @unlink($cookie);
-            @unlink($tmpzip);
-            wp_send_json_error(['message' => 'Nonce non trovato']);
-        }
-        $cfile = curl_file_create($tmpzip, 'application/zip', 'agent.zip');
-        $postfields = ['_wpnonce' => $nonce, 'pluginzip' => $cfile];
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $base . '/wp-admin/update.php?action=upload-plugin',
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $postfields
-        ]);
-        $install_res = curl_exec($ch);
-        if (!$install_res) {
-            curl_close($ch);
-            @unlink($cookie);
-            @unlink($tmpzip);
-            wp_send_json_error(['message' => 'Installazione fallita']);
-        }
-        // Trova link di attivazione (supporta & e &amp;)
-        preg_match('/plugins\.php\?action=activate(?:&|&amp;)plugin=([^"&]+)(?:&|&amp;)_wpnonce=([^"]+)/', $install_res, $a);
-        if (!empty($a[1]) && !empty($a[2])) {
-            $activate_url = $base . '/wp-admin/plugins.php?action=activate&plugin=' . $a[1] . '&_wpnonce=' . $a[2];
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $activate_url,
-                CURLOPT_HTTPGET => true,
-                CURLOPT_POST => false,
-                CURLOPT_REFERER => $base . '/wp-admin/plugins.php'
-            ]);
-            curl_exec($ch);
-        } else {
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $base . '/wp-admin/plugins.php?plugin_status=inactive',
-                CURLOPT_HTTPGET => true,
-                CURLOPT_POST => false
-            ]);
-            $plugins_page = curl_exec($ch);
-            if ($plugins_page) {
-                $activate_url2 = '';
-                if (preg_match_all('/plugins\.php\?action=activate(?:&|&amp;)plugin=([^"&]+)(?:&|&amp;)_wpnonce=([^"]+)/', $plugins_page, $matches, PREG_SET_ORDER)) {
-                    foreach ($matches as $m) {
-                        // Cerca esattamente il file del plugin Agent
-                        if (preg_match('#/wp-agent-updater\.php$#', $m[1])) {
-                            $activate_url2 = $base . '/wp-admin/plugins.php?action=activate&plugin=' . $m[1] . '&_wpnonce=' . $m[2];
-                            break;
-                        }
-                    }
-                }
-                // Fallback: cerca qualsiasi link di attivazione che contenga 'wp-agent-updater' nello slug
-                if (!$activate_url2 && preg_match_all('/href="([^"]*plugins\.php\?action=activate[^"]+)"/', $plugins_page, $links, PREG_SET_ORDER)) {
-                    foreach ($links as $lnk) {
-                        if (strpos(html_entity_decode($lnk[1]), 'wp-agent-updater') !== false) {
-                            $activate_url2 = html_entity_decode($lnk[1]);
-                            if (strpos($activate_url2, $base) !== 0) {
-                                $activate_url2 = $base . '/wp-admin/' . ltrim($activate_url2, '/wp-admin/');
-                            }
-                            break;
-                        }
-                    }
-                }
-                if ($activate_url2) {
-                    curl_setopt_array($ch, [
-                        CURLOPT_URL => $activate_url2,
-                        CURLOPT_HTTPGET => true,
-                        CURLOPT_POST => false,
-                        CURLOPT_REFERER => $base . '/wp-admin/plugins.php?plugin_status=inactive'
-                    ]);
-                    curl_exec($ch);
-                } else {
-                    // Secondo fallback: pagina "tutti i plugin"
-                    curl_setopt_array($ch, [
-                        CURLOPT_URL => $base . '/wp-admin/plugins.php?plugin_status=all',
-                        CURLOPT_HTTPGET => true,
-                        CURLOPT_POST => false
-                    ]);
-                    $plugins_all = curl_exec($ch);
-                    if ($plugins_all) {
-                        $activate_url3 = '';
-                        if (preg_match_all('/plugins\.php\?action=activate(?:&|&amp;)plugin=([^"&]+)(?:&|&amp;)_wpnonce=([^"]+)/', $plugins_all, $matches3, PREG_SET_ORDER)) {
-                            foreach ($matches3 as $m3) {
-                                if (preg_match('#wp-agent-updater#', $m3[1])) {
-                                    $activate_url3 = $base . '/wp-admin/plugins.php?action=activate&plugin=' . $m3[1] . '&_wpnonce=' . $m3[2];
-                                    break;
-                                }
-                            }
-                        }
-                        if ($activate_url3) {
-                            curl_setopt_array($ch, [
-                                CURLOPT_URL => $activate_url3,
-                                CURLOPT_HTTPGET => true,
-                                CURLOPT_POST => false,
-                                CURLOPT_REFERER => $base . '/wp-admin/plugins.php?plugin_status=all'
-                            ]);
-                            curl_exec($ch);
-                        } else {
-                            // Terzo fallback: attivazione di massa con checked[] e nonce bulk
-                            // Trova il valore del checkbox del plugin Agent e il nonce del form bulk
-                            $agent_plugin_path = '';
-                            if (preg_match_all('/name="checked\[\]"\s+value="([^"]+)"/', $plugins_all, $chkMatches)) {
-                                foreach ($chkMatches[1] as $val) {
-                                    if (preg_match('#/wp-agent-updater\.php$#', $val) || strpos($val, 'wp-agent-updater') !== false) {
-                                        $agent_plugin_path = $val;
-                                        break;
-                                    }
-                                }
-                            }
-                            $bulk_nonce = '';
-                            if (preg_match('/name="_wpnonce"\s+id="_wpnonce"\s+value="([^"]+)"/', $plugins_all, $bn)) {
-                                $bulk_nonce = $bn[1];
-                            } elseif (preg_match('/name="_wpnonce"\s+value="([^"]+)"/', $plugins_all, $bn2)) {
-                                $bulk_nonce = $bn2[1];
-                            }
-                            if ($agent_plugin_path && $bulk_nonce) {
-                                $postfields = [
-                                    'action' => 'activate-selected',
-                                    'plugin_status' => 'all',
-                                    '_wpnonce' => $bulk_nonce,
-                                    '_wp_http_referer' => '/wp-admin/plugins.php?plugin_status=all',
-                                    'checked[]' => $agent_plugin_path
-                                ];
-                                curl_setopt_array($ch, [
-                                    CURLOPT_URL => $base . '/wp-admin/plugins.php',
-                                    CURLOPT_POST => true,
-                                    CURLOPT_POSTFIELDS => $postfields,
-                                    CURLOPT_REFERER => $base . '/wp-admin/plugins.php?plugin_status=all'
-                                ]);
-                                curl_exec($ch);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Configura Master URL e abilita l'Agent via options.php (evita dipendenze da AJAX nonce)
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $base . '/wp-admin/admin.php?page=wp-agent-updater',
-            CURLOPT_HTTPGET => true,
-            CURLOPT_POST => false
-        ]);
-        $settings_page = curl_exec($ch);
-        $settings_nonce = '';
-        $http_referer = '';
-        if ($settings_page) {
-            if (preg_match('/name="_wpnonce"\s+value="([^"]+)"/', $settings_page, $nm)) {
-                $settings_nonce = $nm[1];
-            }
-            if (preg_match('/name="_wp_http_referer"\s+value="([^"]+)"/', $settings_page, $rm)) {
-                $http_referer = $rm[1];
-            }
-        }
-        if ($settings_nonce) {
-            $postfields = [
-                'option_page' => 'wp_agent_updater_options',
-                'action' => 'update',
-                '_wpnonce' => $settings_nonce,
-                '_wp_http_referer' => $http_referer ?: '/wp-admin/admin.php?page=wp-agent-updater',
-                // Imposta l'URL del Master (sito corrente)
-                'wp_agent_updater_master_url' => site_url(),
-                'wp_agent_updater_active' => 'yes'
-            ];
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $base . '/wp-admin/options.php',
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $postfields,
-                CURLOPT_REFERER => $base . '/wp-admin/admin.php?page=wp-agent-updater'
-            ]);
-            curl_exec($ch);
-        }
-        
-        // Estrai nonce AJAX per forzare sync
-        $toggle_nonce = '';
-        if ($settings_page && preg_match('/nonce:\s*\'([^\']+)\'/', $settings_page, $tn)) {
-            $toggle_nonce = $tn[1];
-        }
-        // Forza una prima sync dall'Agent al Master
-        if ($toggle_nonce) {
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $base . '/wp-admin/admin-ajax.php',
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => [
-                    'action' => 'wp_agent_updater_force_sync',
-                    'nonce' => $toggle_nonce
-                ],
-                CURLOPT_REFERER => $base . '/wp-admin/admin.php?page=wp-agent-updater'
-            ]);
-            curl_exec($ch);
-        }
-        curl_close($ch);
-        @unlink($cookie);
-        @unlink($tmpzip);
-        // Aggiorna tabella: se la sync è arrivata al Master, i dati saranno aggiornati
-        $this->core->trigger_remote_sync($target_url, false);
-        $clients = $this->core->get_clients();
-        $html = $this->render_clients_table_body($clients);
-        wp_send_json_success(['message' => 'Agent installato, attivato e prima sync avviata', 'html' => $html]);
     }
 }
 

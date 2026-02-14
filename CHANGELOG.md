@@ -7,12 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.11] - 2026-02-14
+## [1.0.12] - 2026-02-14
 ### Changed
-- Migliorata gestione del deploy remoto: messaggi popup corretti e verifica stato Agent più robusta.
-- Prima sincronizzazione forzata subito dopo l’attivazione dell’Agent.
-- Pulsante Abort ora azzera correttamente la barra di avanzamento.
-- Affinata logica UI su progressi e stati per ridurre falsi positivi.
+- Allineamento versione post-rollback; aggiornato update.json e metadata.
+- Migliorata robustezza dei messaggi popup e verifica stato Agent.
+- Sync iniziale forzata dopo attivazione Agent e UI progress raffinata.
 
 ## [1.0.10] - 2026-02-14
 ### Changed
