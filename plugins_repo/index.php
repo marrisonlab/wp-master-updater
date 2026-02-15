@@ -80,9 +80,18 @@ foreach ($files as $zip_file) {
             // Estrae lo slug dal nome del file ZIP
             $zip_filename = basename($zip_file, '.zip');
             
-            // Rimuove la versione dal nome del file se presente
+            // Rimuove pattern comuni dai nomi dei file:
+            // 1. Versioni: -1.2.3 o -v1.2.3
+            // 2. Duplicati: " (N)" dove N è un numero
+            // 3. Suffissi custom: -custom
+            $slug = $zip_filename;
+            
+            // Rimuove " (N)" pattern (es: "affiliate-for-woocommerce (8)" -> "affiliate-for-woocommerce")
+            $slug = preg_replace('/\s+\(\d+\)$/', '', $slug);
+            
+            // Rimuove versione dal nome del file se presente
             // Es: jet-engine-3.5.1 -> jet-engine
-            $slug = preg_replace('/-\d+(\.\d+)*(-custom)?$/', '', $zip_filename);
+            $slug = preg_replace('/-v?\d+(\.\d+)*(-custom)?$/', '', $slug);
             
             // Se non riesce a estrarre lo slug, usa il nome della cartella interna
             if (empty($slug)) {
@@ -103,6 +112,7 @@ foreach ($files as $zip_file) {
                 'requires_php' => $requires_php,
                 'tested' => $tested,
                 'download_url' => $download_url,
+                'package' => $download_url, // Alias for compatibility
                 'homepage' => '',
                 'changelog' => '<h4>' . $version . '</h4><p>Updated custom version</p>',
                 'zip_file' => basename($zip_file),

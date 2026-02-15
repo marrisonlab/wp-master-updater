@@ -71,13 +71,23 @@ foreach ($files as $zip_file) {
             // Estrae lo slug dal nome del file ZIP
             $zip_filename = basename($zip_file, '.zip');
             
-            // Rimuove la versione dal nome del file se presente
-            // Es: my-theme-1.0.0.zip -> my-theme
-            $slug = preg_replace('/-\d+(\.\d+)*(-custom)?$/', '', $zip_filename);
+            // Rimuove pattern comuni dai nomi dei file:
+            // 1. Versioni: -1.2.3 o -v1.2.3
+            // 2. Duplicati: " (N)" dove N è un numero
+            // 3. Suffissi custom: -custom
+            $slug = $zip_filename;
             
-            // Se non riesce a estrarre lo slug dal nome file, usa il nome della cartella interna
-            if (empty($slug) && strpos($theme_info['file'], '/') !== false) {
-                $slug = dirname($theme_info['file']);
+            // Rimuove " (N)" pattern (es: "jupiterx (2)" -> "jupiterx")
+            $slug = preg_replace('/\s+\(\d+\)$/', '', $slug);
+            
+            // Rimuove versione dal nome del file se presente
+            // Es: jupiterx-v4.14.1 -> jupiterx
+            $slug = preg_replace('/-v?\d+(\.\d+)*(-custom)?$/', '', $slug);
+            
+            // Se non riesce a estrarre lo slug, usa il nome della cartella interna
+            if (empty($slug)) {
+                $first_dir = dirname($theme_info['file']);
+                $slug = $first_dir;
             }
             
             // URL completo per il download
@@ -89,9 +99,13 @@ foreach ($files as $zip_file) {
                 'version' => $version ?: '1.0.0',
                 'author' => $author ?: 'Unknown',
                 'description' => $description ?: 'Custom Theme',
+                'requires' => '',
                 'requires_php' => $requires_php,
+                'tested' => '',
                 'download_url' => $download_url,
-                'homepage' => '',
+                'package' => $download_url, // Alias for compatibility
+                'info_url' => '',
+                'changelog' => '<h4>' . $version . '</h4><p>Updated custom version</p>',
                 'zip_file' => basename($zip_file),
                 'file_size' => filesize($zip_file),
                 'last_modified' => date('Y-m-d H:i:s', filemtime($zip_file))

@@ -904,34 +904,70 @@ class Marrison_Master_Admin {
                 $success = false;
                 $msg = 'Update Error: ' . $res->get_error_message();
             } else {
-                $updated_plugins = 0;
-                $updated_translations = 0;
-                $blocked_plugins = 0;
-                $failed_plugins = 0;
-                if (is_array($res) && isset($res['updated']) && isset($res['updated']['plugins'])) {
-                    $updated_plugins = intval($res['updated']['plugins']);
-                }
-                if (is_array($res) && isset($res['updated']) && isset($res['updated']['translations'])) {
-                    $updated_translations = intval($res['updated']['translations']);
-                }
-                if (is_array($res) && isset($res['report']['plugins'])) {
-                    $blocked_plugins = isset($res['report']['plugins']['skipped_no_package']) ? count((array)$res['report']['plugins']['skipped_no_package']) : 0;
-                    $failed_plugins = isset($res['report']['plugins']['failed']) ? count((array)$res['report']['plugins']['failed']) : 0;
-                }
-
-                if ($updated_plugins > 0 || $updated_translations > 0) {
-                    $msg = 'Update completed: ' . $updated_plugins . ' plugins updated';
-                    if ($updated_translations > 0) {
-                        $msg .= ', ' . $updated_translations . ' translations updated';
-                    }
-                } elseif ($blocked_plugins > 0 && $failed_plugins === 0) {
-                    $msg = 'Update blocked: ' . $blocked_plugins . ' plugins missing package/credentials';
-                } elseif ($failed_plugins > 0 && $blocked_plugins === 0) {
-                    $msg = 'Update completed with errors: ' . $failed_plugins . ' plugin updates failed';
-                } elseif ($failed_plugins > 0 && $blocked_plugins > 0) {
-                    $msg = 'Update completed with issues: ' . $failed_plugins . ' failed, ' . $blocked_plugins . ' blocked';
+                $job_id = isset($res['job_id']) ? $res['job_id'] : '';
+                if (!$job_id) {
+                    $success = false;
+                    $msg = 'Update Error: missing job id from agent';
                 } else {
-                    $msg = 'Update completed: no plugins required update';
+                    wp_send_json_success([
+                        'job_id' => $job_id,
+                        'message' => 'Update started on agent',
+                    ]);
+                }
+            }
+        } elseif ($action === 'update_status') {
+            $job_id = isset($_POST['job_id']) ? sanitize_text_field($_POST['job_id']) : '';
+            if (empty($job_id)) {
+                $success = false;
+                $msg = 'Update Status Error: missing job id';
+            } else {
+                $status = $this->core->get_remote_update_status($client_url, $job_id);
+                if (is_wp_error($status)) {
+                    $success = false;
+                    $msg = 'Update Status Error: ' . $status->get_error_message();
+                } else {
+                    $state = $status['status'] ?? 'unknown';
+                    $done = in_array($state, ['completed', 'error'], true);
+                    if ($done) {
+                        $this->core->trigger_remote_sync($client_url, false);
+                    }
+                    $clients = $this->core->get_clients();
+                    $html = $this->render_clients_table_body($clients);
+                    $response_payload = ['html' => $html, 'done' => $done];
+                    if ($state === 'completed') {
+                        $summary = $status['result'] ?? [];
+                        $updated_plugins = (int)($summary['updated']['plugins'] ?? 0);
+                        $updated_translations = (int)($summary['updated']['translations'] ?? 0);
+                        $blocked_plugins = 0;
+                        $failed_plugins = 0;
+                        if (!empty($summary['report']['plugins'])) {
+                            $blocked_plugins = isset($summary['report']['plugins']['skipped_no_package']) ? count((array)$summary['report']['plugins']['skipped_no_package']) : 0;
+                            $failed_plugins = isset($summary['report']['plugins']['failed']) ? count((array)$summary['report']['plugins']['failed']) : 0;
+                        }
+                        if ($updated_plugins > 0 || $updated_translations > 0) {
+                            $msg = 'Update completed: ' . $updated_plugins . ' plugins updated';
+                            if ($updated_translations > 0) {
+                                $msg .= ', ' . $updated_translations . ' translations updated';
+                            }
+                        } elseif ($blocked_plugins > 0 && $failed_plugins === 0) {
+                            $msg = 'Update blocked: ' . $blocked_plugins . ' plugins missing package/credentials';
+                        } elseif ($failed_plugins > 0 && $blocked_plugins === 0) {
+                            $msg = 'Update completed with errors: ' . $failed_plugins . ' plugin updates failed';
+                        } elseif ($failed_plugins > 0 && $blocked_plugins > 0) {
+                            $msg = 'Update completed with issues: ' . $failed_plugins . ' failed, ' . $blocked_plugins . ' blocked';
+                        } else {
+                            $msg = 'Update completed: no plugins required update';
+                        }
+                        $response_payload['message'] = $msg;
+                        wp_send_json_success($response_payload);
+                    } elseif ($state === 'error') {
+                        $msg = 'Update Error: ' . ($status['error'] ?? 'Unknown error');
+                        $response_payload['message'] = $msg;
+                        wp_send_json_error($response_payload);
+                    } else {
+                        $response_payload['message'] = 'Update in progress...';
+                        wp_send_json_success($response_payload);
+                    }
                 }
             }
         } elseif ($action === 'restore') {
@@ -950,6 +986,10 @@ class Marrison_Master_Admin {
         } elseif ($action === 'delete') {
             $this->core->delete_client($client_url);
             $msg = 'Client removed';
+            if ($is_bulk) {
+                if ($success) wp_send_json_success(['message' => $msg]);
+                else wp_send_json_error(['message' => $msg]);
+            }
         } elseif ($action === 'noop') {
             $msg = 'Table updated';
         }
@@ -972,7 +1012,7 @@ class Marrison_Master_Admin {
         }
         ob_start();
         if (empty($clients)): ?>
-            <tr><td colspan="7">No clients connected.</td></tr>
+            <tr><td colspan="8">No clients connected.</td></tr>
         <?php else: ?>
             <?php $i = 1; foreach ($clients as $url => $data): ?>
                 <?php
@@ -1027,6 +1067,9 @@ class Marrison_Master_Admin {
                 ?>
                 <tr class="mmu-main-row" data-key="<?php echo esc_attr($row_key); ?>" style="cursor: pointer;">
                     <td style="text-align: center;">
+                        <input type="checkbox" class="mmu-select-client" value="<?php echo esc_attr($url); ?>">
+                    </td>
+                    <td style="text-align: center;">
                         <span class="mmu-led" style="color: <?php echo $led_color; ?>;" title="<?php echo esc_attr($led_title); ?>"></span>
                     </td>
                     <td><strong style="display: block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo esc_attr($data['site_name']); ?>"><?php echo esc_html($data['site_name']); ?></strong></td>
@@ -1072,7 +1115,7 @@ class Marrison_Master_Admin {
                 
                 <!-- Details Row -->
                 <tr class="mmu-details-row" id="details-<?php echo esc_attr($row_key); ?>" style="display:none;">
-                    <td colspan="7">
+                    <td colspan="8">
                         <div class="flex-container" style="display: flex; gap: 20px; margin-bottom: 25px;">
                             
                             <!-- Themes -->
@@ -1393,17 +1436,34 @@ class Marrison_Master_Admin {
                     <button id="marrison-bulk-sync" class="button button-primary">Mass Sync</button>
                     <button id="marrison-bulk-update" class="button button-secondary" style="margin: 0 5px;">Mass Update</button>
                     <button id="marrison-clear-cache" class="button button-secondary">Clear Master Cache</button>
+                    <button id="marrison-bulk-abort" class="button" disabled>Abort</button>
+                    <button id="marrison-bulk-delete" class="button button-secondary" disabled>Delete Selected</button>
                 </div>
                 <div id="marrison-progress-wrap" style="display:none; flex: 1; max-width: 400px; border: 1px solid #c3c4c7; height: 24px; background: #fff; position: relative; border-radius: 4px; overflow: hidden;">
                      <div id="marrison-progress-bar" style="width: 0%; height: 100%; background: #46b450; transition: width 0.3s ease;"></div>
-                     <div id="marrison-progress-text" style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; line-height: 24px; font-size: 12px; font-weight: 600; color: #1d2327; text-shadow: 0 0 2px #fff;">0%</div>
+                     <div id="marrison-progress-text" style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; line-height: 24px; font-size: 12px; font-weight: 600; color: #ffffff; text-shadow: 0 0 2px #000000;">0%</div>
                 </div>
                 <div id="marrison-bulk-status" style="font-weight: 600;"></div>
+                <div id="marrison-led-summary" style="margin-left:auto; display:flex; align-items:center; gap:10px; font-size:12px;">
+                    <span style="display:flex; align-items:center; gap:4px;">
+                        <span class="mmu-led" style="color:#46b450;"></span>
+                        <span id="mmu-led-count-green">0</span>
+                    </span>
+                    <span style="display:flex; align-items:center; gap:4px;">
+                        <span class="mmu-led" style="color:#dc3232;"></span>
+                        <span id="mmu-led-count-red">0</span>
+                    </span>
+                    <span style="display:flex; align-items:center; gap:4px;">
+                        <span class="mmu-led" style="color:#000000;"></span>
+                        <span id="mmu-led-count-black">0</span>
+                    </span>
+                </div>
             </div>
 
             <table class="wp-list-table widefat fixed striped">
                 <thead>
                     <tr>
+                        <th style="width: 30px;"></th>
                         <th style="width: 50px;">Status</th>
                         <th>Site</th>
                         <th>URL</th>
@@ -1423,11 +1483,37 @@ class Marrison_Master_Admin {
         var marrison_vars = { 
             nonce: '<?php echo wp_create_nonce('marrison_master_nonce'); ?>' 
         };
+        window.isBulkAbortRequested = false;
+        
+            function updateLedSummary() {
+                var $ = jQuery;
+                var green = 0;
+                var red = 0;
+                var black = 0;
+                $('#marrison-clients-body .mmu-main-row').each(function() {
+                    var led = $(this).find('.mmu-led').first();
+                    if (!led.length) return;
+                    var color = led.css('color');
+                    if (color === 'rgb(70, 180, 80)') {
+                        green++;
+                    } else if (color === 'rgb(220, 50, 50)') {
+                        red++;
+                    } else if (color === 'rgb(0, 0, 0)') {
+                        black++;
+                    }
+                });
+                jQuery('#mmu-led-count-green').text(green);
+                jQuery('#mmu-led-count-red').text(red);
+                jQuery('#mmu-led-count-black').text(black);
+            }
         
             function updateBulkUpdateAvailability() {
                 var $ = jQuery;
                 var candidates = $('#marrison-clients-body .marrison-action-btn[value="update"]:not(:disabled)').length;
                 $('#marrison-bulk-update').prop('disabled', candidates === 0);
+                var selected = $('#marrison-clients-body .mmu-select-client:checked').length;
+                $('#marrison-bulk-delete').prop('disabled', selected === 0);
+                updateLedSummary();
             }
         
             function updateProgress(current, total, message, callback) {
@@ -1612,6 +1698,35 @@ class Marrison_Master_Admin {
             }
             window.performClientAction = performClientAction;
 
+            function pollUpdateStatus(clientUrl, jobId, button, originalText) {
+                var intervalId = setInterval(function() {
+                    jQuery.post(ajaxurl, {
+                        action: 'marrison_client_action',
+                        cmd: 'update_status',
+                        client_url: clientUrl,
+                        job_id: jobId,
+                        nonce: marrison_vars.nonce
+                    }, function(response) {
+                        if (!response || !response.data) return;
+                        if (response.data.html) {
+                            jQuery('#marrison-clients-body').html(response.data.html);
+                            bindEvents();
+                            updateBulkUpdateAvailability();
+                        }
+                        if (response.data.message) {
+                            var noticeClass = response.success ? 'notice-success' : 'notice-error';
+                            jQuery('#marrison-notices').html('<div class=\"notice ' + noticeClass + ' is-dismissible\"><p>' + response.data.message + '</p></div>');
+                        }
+                        if (response.data.done) {
+                            clearInterval(intervalId);
+                            if (button) {
+                                jQuery(button).prop('disabled', false).text(originalText);
+                            }
+                        }
+                    });
+                }, 5000);
+            }
+
             function bindEvents() {
                 var $ = jQuery;
                 $('.mmu-main-row').off('click').on('click', function(e) {
@@ -1623,14 +1738,46 @@ class Marrison_Master_Admin {
                 
                 $('.marrison-action-btn').off('click').on('click', function(e) {
                     e.preventDefault();
-                    console.log('Button clicked:', $(this).val(), 'isBulkRunning:', window.isBulkRunning); // Debug log
                     if (window.isBulkRunning) return; 
-                    performClientAction(this);
+                    var btn = this;
+                    var action = jQuery(btn).val();
+                    if (action === 'update') {
+                        var clientUrl = jQuery(btn).closest('form').find('input[name=\"client_url\"]').val();
+                        var originalText = jQuery(btn).text();
+                        jQuery(btn).prop('disabled', true).text('Updating...');
+                        jQuery.post(ajaxurl, {
+                            action: 'marrison_client_action',
+                            cmd: 'update',
+                            client_url: clientUrl,
+                            nonce: marrison_vars.nonce
+                        }, function(response) {
+                            if (response && response.data && response.data.message) {
+                                var noticeClass = response.success ? 'notice-success' : 'notice-error';
+                                jQuery('#marrison-notices').html('<div class=\"notice ' + noticeClass + ' is-dismissible\"><p>' + response.data.message + '</p></div>');
+                            }
+                            if (response && response.success && response.data && response.data.job_id) {
+                                pollUpdateStatus(clientUrl, response.data.job_id, btn, originalText);
+                            } else {
+                                jQuery(btn).prop('disabled', false).text(originalText);
+                            }
+                        }).fail(function() {
+                            jQuery('#marrison-notices').html('<div class=\"notice notice-error is-dismissible\"><p>Connection error during update</p></div>');
+                            jQuery(btn).prop('disabled', false).text(originalText);
+                        });
+                    } else {
+                        performClientAction(btn);
+                    }
                 });
             }
 
             jQuery(function($) {
                 bindEvents();
+                updateLedSummary();
+                updateBulkUpdateAvailability();
+                
+                $(document).on('change', '.mmu-select-client', function() {
+                    updateBulkUpdateAvailability();
+                });
                 
                 // Toggle Ignore Plugin
                 $(document).on('change', '.marrison-ignore-plugin', function() {
@@ -1697,6 +1844,7 @@ class Marrison_Master_Admin {
                     if (!confirm('Start sync on all ' + clients.length + ' clients?')) return;
 
                     window.isBulkRunning = true;
+                    window.isBulkAbortRequested = false;
                     var bulkSyncBtn = $(this);
                     var originalText = bulkSyncBtn.text();
                     bulkSyncBtn.prop('disabled', true);
@@ -1711,6 +1859,27 @@ class Marrison_Master_Admin {
                     updateProgress(0, total, 'Starting mass sync...');
                     
                     function syncNext() {
+                        if (window.isBulkAbortRequested) {
+                            jQuery.post(ajaxurl, {
+                                action: 'marrison_client_action',
+                                cmd: 'noop',
+                                nonce: marrison_vars.nonce
+                            }, function(response) {
+                                if (response.success && response.data.html) {
+                                    jQuery('#marrison-clients-body').html(response.data.html);
+                                    bindEvents();
+                                    updateBulkUpdateAvailability();
+                                }
+                                jQuery('#marrison-notices').html('<div class="notice notice-warning is-dismissible"><p>Mass sync aborted. Processed ' + current + ' of ' + total + ' clients.</p></div>');
+                                updateProgress(total, total, 'Aborted');
+                            }).always(function() {
+                                window.isBulkRunning = false;
+                                window.isBulkAbortRequested = false;
+                                bulkSyncBtn.prop('disabled', false).text(originalText);
+                                jQuery('#marrison-bulk-abort').prop('disabled', true);
+                            });
+                            return;
+                        }
                         if (current >= total) {
                             $.post(ajaxurl, {
                                 action: 'marrison_client_action',
@@ -1726,7 +1895,9 @@ class Marrison_Master_Admin {
                                 updateProgress(total, total, 'Completed!');
                             }).always(function() {
                                 window.isBulkRunning = false;
+                                window.isBulkAbortRequested = false;
                                 bulkSyncBtn.prop('disabled', false).text(originalText);
+                                $('#marrison-bulk-abort').prop('disabled', true);
                             });
                             return;
                         }
@@ -1775,6 +1946,7 @@ class Marrison_Master_Admin {
                     if (!confirm('Start update on ' + clients.length + ' clients?')) return;
 
                     window.isBulkRunning = true;
+                    window.isBulkAbortRequested = false;
                     var bulkUpdateBtn = $(this);
                     var originalText = bulkUpdateBtn.text();
                     bulkUpdateBtn.prop('disabled', true);
@@ -1789,6 +1961,27 @@ class Marrison_Master_Admin {
                     updateProgress(0, total, 'Starting mass update...');
                     
                     function updateNext() {
+                        if (window.isBulkAbortRequested) {
+                            $.post(ajaxurl, {
+                                action: 'marrison_client_action',
+                                cmd: 'noop',
+                                nonce: marrison_vars.nonce
+                            }, function(response) {
+                                if (response.success && response.data.html) {
+                                    $('#marrison-clients-body').html(response.data.html);
+                                    bindEvents();
+                                    updateBulkUpdateAvailability();
+                                }
+                                $('#marrison-notices').html('<div class="notice notice-warning is-dismissible"><p>Mass update aborted. Processed ' + current + ' of ' + total + ' clients.</p></div>');
+                                updateProgress(total, total, 'Aborted');
+                            }).always(function() {
+                                window.isBulkRunning = false;
+                                window.isBulkAbortRequested = false;
+                                bulkUpdateBtn.prop('disabled', false).text(originalText);
+                                $('#marrison-bulk-abort').prop('disabled', true);
+                            });
+                            return;
+                        }
                         if (current >= total) {
                             $.post(ajaxurl, {
                                 action: 'marrison_client_action',
@@ -1803,7 +1996,9 @@ class Marrison_Master_Admin {
                                 updateProgress(total, total, 'Completed!');
                             }).always(function() {
                                 window.isBulkRunning = false;
+                                window.isBulkAbortRequested = false;
                                 bulkUpdateBtn.prop('disabled', false).text(originalText);
+                                $('#marrison-bulk-abort').prop('disabled', true);
                             });
                             return;
                         }
@@ -1827,8 +2022,94 @@ class Marrison_Master_Admin {
                             updateNext();
                         });
                     }
+
+                    $('#marrison-bulk-abort').on('click', function(e) {
+                        e.preventDefault();
+                        if (!window.isBulkRunning) return;
+                        window.isBulkAbortRequested = true;
+                        $(this).prop('disabled', true);
+                    });
                     
                     updateNext();
+                });
+                
+                $('#marrison-bulk-delete').on('click', function(e) {
+                    e.preventDefault();
+                    if (window.isBulkRunning) return;
+
+                    var selected = [];
+                    $('#marrison-clients-body .mmu-select-client:checked').each(function() {
+                        var url = $(this).val();
+                        if (url && selected.indexOf(url) === -1) {
+                            selected.push(url);
+                        }
+                    });
+
+                    if (selected.length === 0) {
+                        alert('No clients selected.');
+                        return;
+                    }
+
+                    if (!confirm('Delete ' + selected.length + ' selected clients?')) return;
+
+                    window.isBulkRunning = true;
+                    var bulkDeleteBtn = $(this);
+                    var originalDeleteText = bulkDeleteBtn.text();
+                    bulkDeleteBtn.prop('disabled', true);
+                    $('.marrison-action-btn').prop('disabled', true);
+                    $('#marrison-notices').empty();
+
+                    var totalDel = selected.length;
+                    var currentDel = 0;
+                    var errorDel = 0;
+
+                    updateProgress(0, totalDel, 'Starting delete...');
+
+                    function deleteNext() {
+                        if (currentDel >= totalDel) {
+                            $.post(ajaxurl, {
+                                action: 'marrison_client_action',
+                                cmd: 'noop',
+                                nonce: marrison_vars.nonce
+                            }, function(response) {
+                                if (response.success && response.data.html) {
+                                    $('#marrison-clients-body').html(response.data.html);
+                                    bindEvents();
+                                    updateBulkUpdateAvailability();
+                                }
+                                $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>Deleted ' + (totalDel - errorDel) + ' clients.</p></div>');
+                                updateProgress(totalDel, totalDel, 'Completed!');
+                            }).always(function() {
+                                window.isBulkRunning = false;
+                                bulkDeleteBtn.prop('disabled', false).text(originalDeleteText);
+                                $('#marrison-bulk-abort').prop('disabled', true);
+                                updateBulkUpdateAvailability();
+                            });
+                            return;
+                        }
+
+                        var clientUrl = selected[currentDel];
+                        updateProgress(currentDel, totalDel, 'Deleting ' + (currentDel + 1) + '/' + totalDel);
+
+                        $.post(ajaxurl, {
+                            action: 'marrison_client_action',
+                            cmd: 'delete',
+                            client_url: clientUrl,
+                            bulk_mode: 'true',
+                            nonce: marrison_vars.nonce
+                        }, function(response) {
+                            if (!response || !response.success) {
+                                errorDel++;
+                            }
+                        }).fail(function() {
+                            errorDel++;
+                        }).always(function() {
+                            currentDel++;
+                            deleteNext();
+                        });
+                    }
+
+                    deleteNext();
                 });
                 
                 $('#marrison-clear-cache').on('click', function(e) {

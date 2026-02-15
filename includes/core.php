@@ -10,22 +10,110 @@ class Marrison_Master_Core {
         error_log("[$timestamp] $message\n", 3, $log_file);
     }
 
+    /**
+     * Normalize URL to prevent duplicates
+     * Removes trailing slash, converts to lowercase, ensures consistent protocol
+     */
+    private function normalize_url($url) {
+        $url = trim($url);
+        $url = untrailingslashit($url);
+        // Parse URL to ensure consistency
+        $parsed = parse_url($url);
+        if (!$parsed || !isset($parsed['host'])) {
+            return $url; // Return as-is if invalid
+        }
+        
+        // Rebuild URL with consistent format
+        $scheme = isset($parsed['scheme']) ? strtolower($parsed['scheme']) : 'http';
+        $host = strtolower($parsed['host']);
+        $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $path = isset($parsed['path']) ? $parsed['path'] : '';
+        
+        $normalized = $scheme . '://' . $host . $port . $path;
+        
+        if ($normalized !== $url) {
+            $this->log_master("URL normalized: '$url' -> '$normalized'");
+        }
+        
+        return $normalized;
+    }
+
+    /**
+     * Consolidate duplicate client entries (same site with different URL formats)
+     */
+    private function consolidate_duplicate_clients() {
+        // Get clients directly to avoid recursion
+        $clients = get_option($this->option_name, []);
+        $normalized_map = [];
+        $duplicates_found = false;
+        
+        foreach ($clients as $url => $data) {
+            $normalized = $this->normalize_url($url);
+            
+            if (isset($normalized_map[$normalized])) {
+                // Duplicate found - merge data, keeping most recent
+                $duplicates_found = true;
+                $existing = $normalized_map[$normalized];
+                $existing_time = strtotime($clients[$existing]['last_sync'] ?? '2000-01-01');
+                $current_time = strtotime($data['last_sync'] ?? '2000-01-01');
+                
+                if ($current_time > $existing_time) {
+                    // Current entry is newer, replace
+                    $this->log_master("Duplicate found: keeping '$url' over '$existing' (newer data)");
+                    unset($clients[$existing]);
+                    $normalized_map[$normalized] = $url;
+                } else {
+                    // Existing entry is newer, remove current
+                    $this->log_master("Duplicate found: keeping '$existing' over '$url' (newer data)");
+                    unset($clients[$url]);
+                }
+            } else {
+                $normalized_map[$normalized] = $url;
+            }
+        }
+        
+        if ($duplicates_found) {
+            update_option($this->option_name, $clients);
+            $this->log_master("Consolidated duplicate clients");
+        }
+        
+        return $duplicates_found;
+    }
+
     public function get_clients() {
+        static $consolidation_done = false;
+        
+        // Run consolidation once per request
+        if (!$consolidation_done) {
+            $this->consolidate_duplicate_clients();
+            $consolidation_done = true;
+        }
+        
         return get_option($this->option_name, []);
     }
 
     public function update_client_data($data) {
         $clients = $this->get_clients();
-        $site_url = $data['site_url'];
+        $site_url = $this->normalize_url($data['site_url']);
         
-        // Preserve ignored plugins
+        // Preserve ignored plugins from any existing entry (normalized or not)
         $ignored_plugins = [];
         if (isset($clients[$site_url]['ignored_plugins'])) {
             $ignored_plugins = $clients[$site_url]['ignored_plugins'];
+        } else {
+            // Check if there's an entry with the original URL
+            $original_url = $data['site_url'];
+            if ($original_url !== $site_url && isset($clients[$original_url]['ignored_plugins'])) {
+                $ignored_plugins = $clients[$original_url]['ignored_plugins'];
+                // Remove old entry
+                unset($clients[$original_url]);
+                $this->log_master("Migrated ignored plugins from '$original_url' to '$site_url'");
+            }
         }
 
-        // Use site_url as key
+        // Use normalized site_url as key
         $clients[$site_url] = array_merge($data, [
+            'site_url' => $site_url, // Store normalized URL
             'last_sync' => current_time('mysql'),
             'status' => 'active', // Explicitly mark as active on successful update
             'ignored_plugins' => $ignored_plugins
@@ -36,24 +124,15 @@ class Marrison_Master_Core {
     public function toggle_ignore_plugin($site_url, $plugin_path, $ignore) {
         $clients = $this->get_clients();
         
-        // Normalize input to handle trailing slash mismatches for site key
-        $url_norm = untrailingslashit($site_url);
-        $found_key = false;
+        // Use normalized URL
+        $normalized_url = $this->normalize_url($site_url);
         
-        if (isset($clients[$site_url])) {
-            $found_key = $site_url;
-        } else {
-            foreach (array_keys($clients) as $key) {
-                if (untrailingslashit($key) === $url_norm) {
-                    $found_key = $key;
-                    break;
-                }
-            }
-        }
-
-        if (!$found_key) {
+        if (!isset($clients[$normalized_url])) {
+            $this->log_master("toggle_ignore_plugin: Client not found for '$normalized_url'");
             return false;
         }
+        
+        $found_key = $normalized_url;
         
         $ignored = $clients[$found_key]['ignored_plugins'] ?? [];
         
@@ -73,44 +152,46 @@ class Marrison_Master_Core {
     public function mark_client_unreachable($site_url) {
         $clients = $this->get_clients();
         
-        // Normalize input to handle trailing slash mismatches
-        $url_norm = untrailingslashit($site_url);
-        $found_key = false;
-        
-        // Try exact match first
-        if (isset($clients[$site_url])) {
-            $found_key = $site_url;
-        } else {
-            // Try normalized match
-            foreach (array_keys($clients) as $key) {
-                if (untrailingslashit($key) === $url_norm) {
-                    $found_key = $key;
-                    break;
-                }
-            }
-        }
+        // Use normalized URL
+        $normalized_url = $this->normalize_url($site_url);
 
-        if ($found_key) {
-            $clients[$found_key]['status'] = 'unreachable';
+        if (isset($clients[$normalized_url])) {
+            $clients[$normalized_url]['status'] = 'unreachable';
             // Do NOT update last_sync so we know it's stale
             update_option($this->option_name, $clients);
+            $this->log_master("Marked client unreachable: $normalized_url");
+        } else {
+            $this->log_master("mark_client_unreachable: Client not found for '$normalized_url'");
         }
     }
 
     public function delete_client($site_url) {
         $clients = $this->get_clients();
-        if (isset($clients[$site_url])) {
-            unset($clients[$site_url]);
+        $normalized_url = $this->normalize_url($site_url);
+        
+        if (isset($clients[$normalized_url])) {
+            unset($clients[$normalized_url]);
             update_option($this->option_name, $clients);
+            $this->log_master("Deleted client: $normalized_url");
             return true;
         }
         return false;
     }
 
     /**
-     * Fetch private repository data (Plugins & Themes)
+     * Fetch private repository data (Plugins & Themes) with caching
      */
     public function get_private_repo_data() {
+        // Check cache first (5 minute cache)
+        $cache_key = 'marrison_private_repo_data';
+        $cached = get_transient($cache_key);
+        
+        if ($cached !== false) {
+            $this->log_master("Using cached repository data");
+            return $cached;
+        }
+        
+        $this->log_master("Fetching fresh repository data");
         $data = ['plugins' => [], 'themes' => []];
 
         // Plugins
@@ -129,6 +210,9 @@ class Marrison_Master_Core {
             }
         }
 
+        // Cache for 5 minutes
+        set_transient($cache_key, $data, 5 * MINUTE_IN_SECONDS);
+        
         return $data;
     }
 
@@ -250,27 +334,31 @@ class Marrison_Master_Core {
                     $this->log_master("Plugin injection check: $file | Current: $current_version | Available: $new_version | Package: " . ($package_url ?: 'MISSING'));
 
                     if ($new_version && version_compare($current_version, $new_version, '<')) {
-                        // Create update entry
-                        if (!isset($client_data['plugins_need_update'])) {
-                            $client_data['plugins_need_update'] = [];
+                        // Validate package URL before injecting
+                        if (empty($package_url)) {
+                            $this->log_master("WARNING: Plugin $file has update to $new_version but NO PACKAGE URL - skipping injection");
+                        } else {
+                            // Create update entry
+                            if (!isset($client_data['plugins_need_update'])) {
+                                $client_data['plugins_need_update'] = [];
+                            }
+                            
+                            // Inject update with validated package URL
+                            $client_data['plugins_need_update'][$file] = [
+                                'slug' => $slug,
+                                'new_version' => $new_version,
+                                'package' => $package_url,
+                                'url' => $repo_item['url'] ?? '',
+                                'Name' => $plugin['Name']
+                            ];
+                            
+                            $this->log_master("✓ INJECTED plugin update: $file -> $new_version (Package: $package_url)");
                         }
-                        
-                        // Only add if not already present (prefer WP repo? or override? usually private overrides)
-                        // Let's overwrite or add.
-                        $client_data['plugins_need_update'][$file] = [
-                            'slug' => $slug,
-                            'new_version' => $new_version,
-                            'package' => $package_url,
-                            'url' => $repo_item['url'] ?? '',
-                            'Name' => $plugin['Name']
-                        ];
-                        
-                        $this->log_master("INJECTED plugin update: $file -> $new_version (Package: " . ($package_url ? 'YES' : 'NO') . ")");
                     } else {
                         $this->log_master("Plugin $file is up to date or version check failed");
                     }
                 } else {
-                    $this->log_master("No repo item found for plugin: $file (slug: $slug)");
+                    $this->log_master("No repo match for plugin: $file (slug: $slug)");
                 }
             }
         }
@@ -289,39 +377,49 @@ class Marrison_Master_Core {
                     $this->log_master("Theme injection check: $slug | Current: $current_version | Available: $new_version | Package: " . ($package_url ?: 'MISSING'));
 
                     if ($new_version && version_compare($current_version, $new_version, '<')) {
-                        if (!isset($client_data['themes_need_update'])) {
-                            $client_data['themes_need_update'] = [];
-                        }
+                        // Validate package URL before injecting
+                        if (empty($package_url)) {
+                            $this->log_master("WARNING: Theme $slug has update to $new_version but NO PACKAGE URL - skipping injection");
+                        } else {
+                            if (!isset($client_data['themes_need_update'])) {
+                                $client_data['themes_need_update'] = [];
+                            }
 
-                        $client_data['themes_need_update'][$slug] = [
-                            'slug' => $slug,
-                            'new_version' => $new_version,
-                            'package' => $package_url,
-                            'url' => $repo_item['url'] ?? '',
-                            'Name' => $theme['Name']
-                        ];
-                        
-                        $this->log_master("INJECTED theme update: $slug -> $new_version (Package: " . ($package_url ? 'YES' : 'NO') . ")");
+                            $client_data['themes_need_update'][$slug] = [
+                                'slug' => $slug,
+                                'new_version' => $new_version,
+                                'package' => $package_url,
+                                'url' => $repo_item['url'] ?? '',
+                                'Name' => $theme['Name']
+                            ];
+                            
+                            $this->log_master("✓ INJECTED theme update: $slug -> $new_version (Package: $package_url)");
+                        }
                     }
                 } else {
                     $this->log_master("No repo item found for theme: $slug");
                 }
             }
         }
+        
+        // Log summary of injected updates
+        $plugin_updates = count($client_data['plugins_need_update'] ?? []);
+        $theme_updates = count($client_data['themes_need_update'] ?? []);
+        $this->log_master("Injection complete: $plugin_updates plugin updates, $theme_updates theme updates injected");
     }
 
     /**
-     * Trigger remote update with cache clearing and translation support
+     * Trigger remote update asynchronously on Agent
      */
     public function trigger_remote_update($client_url) {
-        $primary_endpoint = trailingslashit($client_url) . 'wp-json/wp-agent-updater/v1/update';
+        $primary_endpoint = trailingslashit($client_url) . 'wp-json/wp-agent-updater/v1/update-async';
         $args = [
             'body' => [
                 'clear_cache' => true,
-                'update_translations' => true
+                'update_translations' => true,
             ],
-            'timeout' => 300,
-            'sslverify' => false
+            'timeout' => 15,
+            'sslverify' => false,
         ];
         $response = wp_remote_post($primary_endpoint, $args);
 
@@ -331,33 +429,56 @@ class Marrison_Master_Core {
 
         $code = wp_remote_retrieve_response_code($response);
         $content_type = wp_remote_retrieve_header($response, 'content-type');
-        $is_json = stripos($content_type, 'application/json') !== false;
+        $is_json = stripos((string)$content_type, 'application/json') !== false;
 
-        // Fallback to non-pretty REST route if primary fails (e.g., servers without /wp-json support)
         if ($code !== 200 || !$is_json) {
-            $fallback_endpoint = trailingslashit($client_url) . '?rest_route=/wp-agent-updater/v1/update';
+            $fallback_endpoint = trailingslashit($client_url) . '?rest_route=/wp-agent-updater/v1/update-async';
             $response = wp_remote_post($fallback_endpoint, $args);
             if (is_wp_error($response)) {
                 return $response;
             }
             $code = wp_remote_retrieve_response_code($response);
             $content_type = wp_remote_retrieve_header($response, 'content-type');
-            $is_json = stripos($content_type, 'application/json') !== false;
+            $is_json = stripos((string)$content_type, 'application/json') !== false;
 
             if ($code !== 200 || !$is_json) {
-                $this->trigger_remote_sync($client_url, false);
                 return new WP_Error('http_error', "Remote server returned code $code");
             }
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
-        if (is_array($body) && isset($body['success']) && $body['success'] === false) {
-            $this->trigger_remote_sync($client_url, false);
-            return new WP_Error('update_failed', $body['message'] ?? 'Update failed');
+        if (!is_array($body) || empty($body['success'])) {
+            return new WP_Error('update_failed', $body['message'] ?? 'Update start failed');
         }
-        
-        // Sync after update to refresh data
-        $this->trigger_remote_sync($client_url, false);
+        $job_id = isset($body['job_id']) ? $body['job_id'] : '';
+        if (!$job_id) {
+            return new WP_Error('update_failed', 'Missing job id from agent');
+        }
+        return [
+            'job_id' => $job_id,
+        ];
+    }
+
+    public function get_remote_update_status($client_url, $job_id) {
+        $endpoint = trailingslashit($client_url) . 'wp-json/wp-agent-updater/v1/update-status';
+        $endpoint = add_query_arg('job_id', $job_id, $endpoint);
+        $response = wp_remote_get($endpoint, [
+            'timeout' => 20,
+            'sslverify' => false,
+        ]);
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        $content_type = wp_remote_retrieve_header($response, 'content-type');
+        $is_json = stripos((string)$content_type, 'application/json') !== false;
+        if ($code !== 200 || !$is_json) {
+            return new WP_Error('http_error', "Remote server returned code $code");
+        }
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($body)) {
+            return new WP_Error('invalid_response', 'Invalid response from agent');
+        }
         return $body;
     }
 
@@ -371,33 +492,40 @@ class Marrison_Master_Core {
         $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
 
         $response = wp_remote_get($endpoint, [
-            'timeout' => 10, // Reduced from 15 to 10 seconds for faster scanning
+            'timeout' => 20,
             'sslverify' => false
         ]);
 
-        if (is_wp_error($response)) {
-            if ($mark_unreachable) {
-                $this->mark_client_unreachable($client_url);
-            }
-            return $response;
-        }
+        $code = ! is_wp_error($response) ? wp_remote_retrieve_response_code($response) : 0;
+        $content_type = ! is_wp_error($response) ? wp_remote_retrieve_header($response, 'content-type') : '';
+        $is_json = ! is_wp_error($response) && stripos((string)$content_type, 'application/json') !== false;
 
-        $code = wp_remote_retrieve_response_code($response);
-        if ($code !== 200) {
-            if ($mark_unreachable) {
-                $this->mark_client_unreachable($client_url);
-            }
-            return new WP_Error('http_error', "Remote server returned code $code");
-        }
+        // Fallback to non-pretty REST route if primary fails (e.g., servers without /wp-json support)
+        if (is_wp_error($response) || $code !== 200 || ! $is_json) {
+            $fallback_endpoint = trailingslashit($client_url) . '?rest_route=/wp-agent-updater/v1/status';
+            $fallback_endpoint = add_query_arg('marrison_ts', time(), $fallback_endpoint);
+            $response = wp_remote_get($fallback_endpoint, [
+                'timeout' => 20,
+                'sslverify' => false
+            ]);
 
-        // Verify Content-Type is JSON (handles redirects to 404/Home which return HTML 200 OK)
-        $content_type = wp_remote_retrieve_header($response, 'content-type');
-        // Use stripos for case-insensitive check
-        if (stripos($content_type, 'application/json') === false) {
-            if ($mark_unreachable) {
-                $this->mark_client_unreachable($client_url);
+            if (is_wp_error($response)) {
+                if ($mark_unreachable) {
+                    $this->mark_client_unreachable($client_url);
+                }
+                return $response;
             }
-            return new WP_Error('invalid_content_type', 'Response was not JSON (Possible redirect or error page)');
+
+            $code = wp_remote_retrieve_response_code($response);
+            $content_type = wp_remote_retrieve_header($response, 'content-type');
+            $is_json = stripos((string)$content_type, 'application/json') !== false;
+
+            if ($code !== 200 || ! $is_json) {
+                if ($mark_unreachable) {
+                    $this->mark_client_unreachable($client_url);
+                }
+                return new WP_Error('http_error', "Remote server returned code $code");
+            }
         }
 
         $data = json_decode(wp_remote_retrieve_body($response), true);
@@ -455,49 +583,107 @@ class Marrison_Master_Core {
             return ['success' => true, 'results' => []];
         }
 
-        // Fetch private repo data once for all clients
+        $this->log_master("Starting bulk sync for " . count($client_urls) . " clients");
+        $start_time = microtime(true);
+
+        // Fetch private repo data once for all clients (uses cache)
         $repo_data = $this->get_private_repo_data();
 
         $results = [];
         $requests = [];
+        $request_map = [];
 
-        // Build all requests
+        // Build all requests for parallel execution
         foreach ($client_urls as $url) {
-            $endpoint = trailingslashit($url) . 'wp-json/wp-agent-updater/v1/status';
+            $normalized_url = $this->normalize_url($url);
+            $endpoint = trailingslashit($normalized_url) . 'wp-json/wp-agent-updater/v1/status';
             $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
             
-            $requests[$url] = [
+            $requests[] = [
                 'url' => $endpoint,
                 'type' => 'GET',
-                'timeout' => 15,
-                'sslverify' => false
+                'headers' => [],
+                'data' => [],
+                'cookies' => [],
+                'options' => [
+                    'timeout' => 20, // Increased timeout to reduce false negatives
+                    'verify' => false
+                ]
             ];
+            
+            $request_map[] = $normalized_url;
         }
 
-        // Execute requests in parallel using WordPress HTTP API
-        foreach ($requests as $url => $request) {
-            $response = wp_remote_get($request['url'], [
-                'timeout' => $request['timeout'],
-                'sslverify' => $request['sslverify']
-            ]);
+        // Execute requests in TRUE parallel using Requests library
+        try {
+            // Use Requests library for true parallel execution
+            if (class_exists('Requests')) {
+                $this->log_master("Using Requests library for parallel execution");
+                $responses = \Requests::request_multiple($requests, [
+                    'timeout' => 20,
+                    'verify' => false
+                ]);
+            } else {
+                // Fallback to sequential if Requests not available
+                $this->log_master("Requests library not available, using sequential fallback");
+                $responses = [];
+                foreach ($requests as $request) {
+                    $responses[] = wp_remote_get($request['url'], $request['options']);
+                }
+            }
+        } catch (Exception $e) {
+            $this->log_master("Parallel request error: " . $e->getMessage());
+            // Fallback to sequential
+            $responses = [];
+            foreach ($requests as $request) {
+                $responses[] = wp_remote_get($request['url'], $request['options']);
+            }
+        }
 
+        // Process responses
+        foreach ($responses as $index => $response) {
+            $url = $request_map[$index];
+            
             if (is_wp_error($response)) {
-                $this->mark_client_unreachable($url);
-                $results[$url] = [
-                    'success' => false,
-                    'error' => $response->get_error_message()
-                ];
-                continue;
+                $error_msg = $response->get_error_message();
+                $this->log_master("Client $url failed: $error_msg");
+                
+                // Retry once before marking unreachable
+                $this->log_master("Retrying $url...");
+                $retry_response = wp_remote_get($requests[$index]['url'], $requests[$index]['options']);
+                
+                if (!is_wp_error($retry_response) && wp_remote_retrieve_response_code($retry_response) === 200) {
+                    $response = $retry_response;
+                    $this->log_master("Retry successful for $url");
+                } else {
+                    $this->mark_client_unreachable($url);
+                    $results[$url] = [
+                        'success' => false,
+                        'error' => $error_msg
+                    ];
+                    continue;
+                }
             }
 
             $code = wp_remote_retrieve_response_code($response);
             $content_type = wp_remote_retrieve_header($response, 'content-type');
 
-            if ($code !== 200 || stripos($content_type, 'application/json') === false) {
+            if ($code !== 200) {
+                $this->log_master("Client $url returned HTTP $code");
                 $this->mark_client_unreachable($url);
                 $results[$url] = [
                     'success' => false,
-                    'error' => 'Invalid response'
+                    'error' => "HTTP $code"
+                ];
+                continue;
+            }
+            
+            if (stripos($content_type, 'application/json') === false) {
+                $this->log_master("Client $url returned non-JSON content: $content_type");
+                $this->mark_client_unreachable($url);
+                $results[$url] = [
+                    'success' => false,
+                    'error' => 'Invalid content type'
                 ];
                 continue;
             }
@@ -509,7 +695,9 @@ class Marrison_Master_Core {
 
                 $this->update_client_data($data);
                 $results[$url] = ['success' => true];
+                $this->log_master("Client $url synced successfully");
             } else {
+                $this->log_master("Client $url returned invalid data format");
                 $this->mark_client_unreachable($url);
                 $results[$url] = [
                     'success' => false,
@@ -518,9 +706,14 @@ class Marrison_Master_Core {
             }
         }
 
+        $elapsed = round(microtime(true) - $start_time, 2);
+        $success_count = count(array_filter($results, function($r) { return $r['success'] ?? false; }));
+        $this->log_master("Bulk sync completed: $success_count/" . count($client_urls) . " successful in {$elapsed}s");
+
         return [
             'success' => true,
-            'results' => $results
+            'results' => $results,
+            'elapsed' => $elapsed
         ];
     }
 }

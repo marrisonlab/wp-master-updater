@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-02-15
+### Added
+- Checkbox di selezione per ogni sito e cancellazione bulk dei client.
+- Pulsante Abort per interrompere Mass Sync e Mass Update dal Master.
+### Changed
+- Maggiore robustezza della comunicazione verso gli Agent (timeout e retry).
+- Migliorata visualizzazione degli stati con riepilogo LED e contatori.
+### Fixed
+- Allineata la gestione degli update bloccati con le informazioni inviate dall’Agent.
+
 ## [1.0.14] - 2026-02-14
 ### Changed
 - UI distingue tra “Updates” e “Blocked” (mancanza package/credenziali).
