@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.1] - 2026-02-16
+
+### Changed
+- Agent excluded plugins are preserved when clearing Master cache.
+- Master clients table now refreshes correctly via the Refresh button and auto-refresh.
+- Improved pending/stale visual states after sync and cache clear.
+
 ## [1.1.2] - 2026-02-16
 
 ### Added

@@ -12,11 +12,21 @@ class Marrison_Master_Admin {
         add_action('wp_ajax_marrison_client_action', [$this, 'handle_ajax_action']);
         add_action('wp_ajax_marrison_master_clear_cache', [$this, 'handle_clear_cache']);
         add_action('wp_ajax_marrison_fetch_repo_data', [$this, 'handle_fetch_repo_data']);
+        add_action('wp_ajax_marrison_master_get_api_token', [$this, 'handle_get_api_token']);
         add_action('wp_ajax_marrison_toggle_ignore_plugin', [$this, 'handle_toggle_ignore_plugin']);
         add_action('admin_post_marrison_download_repo_template', [$this, 'handle_download_repo_template']);
 
         $plugin_basename = plugin_basename(WP_MASTER_UPDATER_PATH . 'wp-master-updater.php');
         add_filter('plugin_action_links_' . $plugin_basename, [$this, 'add_action_links']);
+    }
+
+    public function handle_get_api_token() {
+        check_ajax_referer('marrison_master_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized'], 403);
+        }
+        $token = get_option('marrison_master_api_token', '');
+        wp_send_json_success(['token' => (string)$token]);
     }
 
     public function handle_toggle_ignore_plugin() {
@@ -703,6 +713,7 @@ class Marrison_Master_Admin {
 
             <script>
             jQuery(document).ready(function($) {
+                var settingsNonce = '<?php echo wp_create_nonce('marrison_master_nonce'); ?>';
                 // Handle switches
                 $('#marrison_enable_private_plugins').on('change', function() {
                     var isChecked = $(this).is(':checked');
@@ -728,6 +739,8 @@ class Marrison_Master_Admin {
                 });
 
                 $('#marrison-generate-api-token').on('click', function() {
+                    var proceed = confirm('Generating a new API token will invalidate the current one. You will need to update the token on all Agents. Continue?');
+                    if (!proceed) return;
                     var length = 40;
                     var charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
                     var result = '';
@@ -748,24 +761,47 @@ class Marrison_Master_Admin {
                 $('#marrison-toggle-api-token').on('click', function() {
                     var input = $('#marrison_master_api_token');
                     var isPassword = input.attr('type') === 'password';
-                    input.attr('type', isPassword ? 'text' : 'password');
-                    $(this).text(isPassword ? 'Hide' : 'Show');
+                    var ensureValue = function(next) {
+                        if (input.val()) { next(); return; }
+                        $.post(ajaxurl, {
+                            action: 'marrison_master_get_api_token',
+                            nonce: settingsNonce
+                        }, function(response) {
+                            if (response && response.success && response.data && response.data.token) {
+                                input.val(response.data.token);
+                            }
+                        }).always(function() { next(); });
+                    };
+                    ensureValue(function() {
+                        input.attr('type', isPassword ? 'text' : 'password');
+                        $('#marrison-toggle-api-token').text(isPassword ? 'Hide' : 'Show');
+                    });
                 });
 
                 $('#marrison-copy-api-token').on('click', function() {
-                    var value = $('#marrison_master_api_token').val();
-                    if (!value) {
-                        return;
-                    }
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(value);
-                    } else {
-                        var temp = $('<input>');
-                        $('body').append(temp);
-                        temp.val(value).select();
-                        document.execCommand('copy');
-                        temp.remove();
-                    }
+                    var input = $('#marrison_master_api_token');
+                    var doCopy = function() {
+                        var value = input.val();
+                        if (!value) return;
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(value);
+                        } else {
+                            var temp = $('<input>');
+                            $('body').append(temp);
+                            temp.val(value).select();
+                            document.execCommand('copy');
+                            temp.remove();
+                        }
+                    };
+                    if (input.val()) { doCopy(); return; }
+                    $.post(ajaxurl, {
+                        action: 'marrison_master_get_api_token',
+                        nonce: settingsNonce
+                    }, function(response) {
+                        if (response && response.success && response.data && response.data.token) {
+                            input.val(response.data.token);
+                        }
+                    }).always(doCopy);
                 });
 
                 function loadRepoData(force) {
@@ -928,15 +964,18 @@ class Marrison_Master_Admin {
         delete_site_transient('update_plugins');
         delete_site_transient('update_themes');
 
-        // Reset Client Data (Wipe plugin/theme info to force full re-sync)
+        // Reset Client Data (wipe plugin/theme info to force full re-sync, but keep exclusions)
         $clients = get_option('marrison_connected_clients', []);
         foreach ($clients as &$client) {
-             // Keep identity, wipe data and mark as stale
+             $ignored_plugins = $client['ignored_plugins'] ?? [];
+             $ignored_themes = $client['ignored_themes'] ?? [];
              $client = [
                 'site_url' => $client['site_url'],
                 'site_name' => $client['site_name'] ?? 'Unknown',
                 'status' => 'stale',
-                'last_sync' => '-' // Reset sync time
+                'last_sync' => '-', // Reset sync time
+                'ignored_plugins' => $ignored_plugins,
+                'ignored_themes' => $ignored_themes
              ];
         }
         update_option('marrison_connected_clients', $clients);
@@ -1040,6 +1079,9 @@ class Marrison_Master_Admin {
                     if ($status === 'stale') {
                         $led_color = '#888888'; // Grey
                         $led_title = 'Cache cleared, awaiting next sync';
+                    } elseif ($status === 'pending') {
+                        $led_color = '#2271b1'; // Blue
+                        $led_title = 'Sync requested, waiting for Agent';
                     } elseif ($status === 'unreachable') {
                         $led_color = '#000000'; // Black
                         $led_title = 'Agent unreachable';
@@ -1066,6 +1108,8 @@ class Marrison_Master_Admin {
                         <?php
                         if ($status === 'stale') {
                             echo '<span style="color:#646970; opacity:0.8;">Unknown</span>';
+                        } elseif ($status === 'pending') {
+                            echo '<span style="color:#2271b1; opacity:0.9;">Pending…</span>';
                         } else {
                             echo $real_updates_count > 0
                                 ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>'
@@ -1080,6 +1124,8 @@ class Marrison_Master_Admin {
                         <?php
                         if ($status === 'stale') {
                             echo '<span style="color:#646970; opacity:0.8;">Unknown</span>';
+                        } elseif ($status === 'pending') {
+                            echo '<span style="color:#2271b1; opacity:0.9;">Pending…</span>';
                         } else {
                             echo $t_update_count > 0
                                 ? '<span style="color:#dc3232">Updates: ' . $t_update_count . '</span>'
@@ -1492,6 +1538,23 @@ class Marrison_Master_Admin {
             }
             window.marrisonUpdateProgress = updateProgress;
 
+            function refreshClientsTable() {
+                if (window.isBulkRunning) return;
+                var $ = jQuery;
+                var tbody = $('#marrison-clients-body');
+                if (!tbody.length) return;
+                $.post(ajaxurl, {
+                    action: 'marrison_client_action',
+                    cmd: 'noop',
+                    nonce: marrison_vars.nonce
+                }, function(response) {
+                    if (response && response.success && response.data && response.data.html) {
+                        tbody.html(response.data.html);
+                        try { bindEvents(); } catch(e) {}
+                    }
+                });
+            }
+
             function performClientAction(btn) {
                 var $ = jQuery;
                 btn = $(btn);
@@ -1718,21 +1781,11 @@ class Marrison_Master_Admin {
                     
                     function syncNext() {
                         if (current >= total) {
-                            $.post(ajaxurl, {
-                                action: 'marrison_client_action',
-                                cmd: 'noop',
-                                nonce: marrison_vars.nonce
-                            }, function(response) {
-                                if (response.success && response.data.html) {
-                                    $('#marrison-clients-body').html(response.data.html);
-                                    bindEvents();
-                                }
-                                $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>Mass sync completed. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
-                                updateProgress(total, total, 'Completed!');
-                            }).always(function() {
-                                window.isBulkRunning = false;
-                                bulkSyncBtn.prop('disabled', false).text(originalText);
-                            });
+                            refreshClientsTable();
+                            $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>Mass sync completed. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
+                            updateProgress(total, total, 'Completed!');
+                            window.isBulkRunning = false;
+                            bulkSyncBtn.prop('disabled', false).text(originalText);
                             return;
                         }
 
@@ -1795,21 +1848,11 @@ class Marrison_Master_Admin {
                     
                     function updateNext() {
                         if (current >= total) {
-                            $.post(ajaxurl, {
-                                action: 'marrison_client_action',
-                                cmd: 'noop',
-                                nonce: marrison_vars.nonce
-                            }, function(response) {
-                                if (response.success && response.data.html) {
-                                    $('#marrison-clients-body').html(response.data.html);
-                                    bindEvents();
-                                }
-                                $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>Mass update completed. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
-                                updateProgress(total, total, 'Completed!');
-                            }).always(function() {
-                                window.isBulkRunning = false;
-                                bulkUpdateBtn.prop('disabled', false).text(originalText);
-                            });
+                            refreshClientsTable();
+                            $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>Mass update completed. Success: ' + successCount + ', Errors: ' + errorCount + '</p></div>');
+                            updateProgress(total, total, 'Completed!');
+                            window.isBulkRunning = false;
+                            bulkUpdateBtn.prop('disabled', false).text(originalText);
                             return;
                         }
 
@@ -1865,11 +1908,11 @@ class Marrison_Master_Admin {
                     btn.prop('disabled', true).text('Refreshing...');
 
                     $.post(ajaxurl, {
-                        action: 'marrison_master_action',
+                        action: 'marrison_client_action',
                         nonce: marrison_vars.nonce,
                         cmd: 'noop'
                     }, function(response) {
-                        if (response.success && response.data && response.data.html) {
+                        if (response && response.success && response.data && response.data.html) {
                             $('#marrison-clients-body').html(response.data.html);
                             bindEvents();
                         }
@@ -1877,6 +1920,12 @@ class Marrison_Master_Admin {
                         btn.prop('disabled', false).text('Refresh');
                     });
                 });
+
+                setInterval(function() {
+                    if (document.hidden) return;
+                    if (window.isBulkRunning) return;
+                    refreshClientsTable();
+                }, 60000);
             });
         </script>
         <?php
