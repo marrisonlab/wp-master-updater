@@ -7,46 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.16] - 2026-02-15
-### Added
-- Checkbox di selezione per ogni sito e cancellazione bulk dei client.
-- Pulsante Abort per interrompere Mass Sync e Mass Update dal Master.
-### Changed
-- Maggiore robustezza della comunicazione verso gli Agent (timeout e retry).
-- Migliorata visualizzazione degli stati con riepilogo LED e contatori.
-### Fixed
-- Allineata la gestione degli update bloccati con le informazioni inviate dall’Agent.
-
-## [1.0.14] - 2026-02-14
-### Changed
-- UI distingue tra “Updates” e “Blocked” (mancanza package/credenziali).
-- Pulsante Update disabilitato quando ci sono solo update bloccati.
-- Messaggi di update includono traduzioni aggiornate e report dettagliato.
-- LED arancione per stato “updates bloccati”.
-### Fixed
-- Allineati conteggi e messaggi con il report dell’Agent.
-
-## [1.0.13] - 2026-02-14
-### Changed
-- Fallback su `?rest_route=` per aggiornamenti quando `/wp-json/` è bloccato.
-- Messaggi di update accurati: mostrano quanti plugin sono stati aggiornati.
-### Fixed
-- “Mass Update” non più bloccato dopo “Clear Master Cache”.
-
-## [1.0.12] - 2026-02-14
-### Changed
-- Allineamento versione post-rollback; aggiornato update.json e metadata.
-- Migliorata robustezza dei messaggi popup e verifica stato Agent.
-- Sync iniziale forzata dopo attivazione Agent e UI progress raffinata.
-
-## [1.0.10] - 2026-02-14
-### Changed
-- Migliorata barra di avanzamento: avanzamento fluido durante sync/update.
-- Numero progressivo spostato a destra, allineato verticalmente, con badge.
-- Nascondi etichette “Updated”/“Translations updated” quando i dati sono azzerati.
-- LED grigio e messaggio “No data - run sync” in stato non affidabile.
-- “Mass Update” disabilitato fino a nuova “Mass Sync” dopo clear cache.
-
 ## [1.0.9] - 2026-02-13
 ### Added
 - Added functionality to ignore specific plugins from update checks.

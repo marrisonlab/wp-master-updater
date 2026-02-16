@@ -2,8 +2,8 @@
 /**
  * Plugin Name: WP Master Updater
  * Plugin URI: https://github.com/marrisonlab/wp-master-updater
- * Description: Master controller for WP Master Updater System.
- * Version: 1.0.16
+ * Description: Master controller for WP Master/Agent Updater System.
+ * Version: 1.1.0
  * Author: Angelo Marra
  * Author URI: https://marrisonlab.com
  * License: GPL v2 or later

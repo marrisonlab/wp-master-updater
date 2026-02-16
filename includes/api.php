@@ -86,61 +86,17 @@ class Marrison_Master_API {
             ]);
         }
 
-        // Return current repo configuration and injected updates
+        // Return current repo configuration
         $config = [
             'plugins_repo' => get_option('marrison_private_plugins_repo'),
             'themes_repo' => get_option('marrison_private_themes_repo')
         ];
 
-        // Get client data to extract injected updates
-        // IMPORTANT: Use normalized URL to match the key used in update_client_data()
-        $clients = $this->core->get_clients();
-        $injected_updates = [];
-
-        // The site_url in $data might not be normalized yet, but update_client_data() normalizes it
-        // So we need to check both the original and what would be the normalized version
-        $original_url = $data['site_url'];
-        
-        // Try to find the client data - it should be stored with normalized URL
-        $client_data = null;
-        if (isset($clients[$original_url])) {
-            $client_data = $clients[$original_url];
-        } else {
-            // The URL was normalized during update_client_data(), so look for it
-            foreach ($clients as $url => $data_entry) {
-                if (isset($data_entry['site_url']) && $data_entry['site_url'] === $original_url) {
-                    $client_data = $data_entry;
-                    break;
-                }
-            }
-        }
-
-        if ($client_data) {
-            // Extract injected plugin updates
-            if (!empty($client_data['plugins_need_update'])) {
-                $injected_updates['plugins'] = $client_data['plugins_need_update'];
-            }
-            
-            // Extract injected theme updates  
-            if (!empty($client_data['themes_need_update'])) {
-                $injected_updates['themes'] = $client_data['themes_need_update'];
-            }
-        }
-
         $this->finish_guard('[Marrison Sync Output] ');
-        
-        // Log injected updates for debugging
-        if (!empty($injected_updates)) {
-            error_log('[Marrison API] Sending injected updates to ' . $original_url . ': ' . json_encode($injected_updates));
-        } else {
-            error_log('[Marrison API] No injected updates found for ' . $original_url);
-        }
-        
         return rest_ensure_response([
             'success' => true,
             'message' => 'Data synchronized successfully',
-            'config' => $config,
-            'injected_updates' => $injected_updates
+            'config' => $config
         ]);
     }
 }
