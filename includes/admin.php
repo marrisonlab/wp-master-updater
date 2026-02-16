@@ -1018,13 +1018,9 @@ class Marrison_Master_Admin {
                 $success = false;
                 $msg = 'Backup file missing';
             } else {
-                $res = $this->core->trigger_restore_backup($client_url, $backup_file);
-                if (is_wp_error($res)) {
-                    $success = false;
-                    $msg = 'Restore Error: ' . $res->get_error_message();
-                } else {
-                    $msg = 'Restore started successfully';
-                }
+                $this->core->request_agent_restore($client_url, $backup_file);
+                $this->core->mark_client_pending_sync($client_url);
+                $msg = 'Restore request sent to Agent';
             }
         } elseif ($action === 'delete') {
             $this->core->delete_client($client_url);
@@ -1035,11 +1031,72 @@ class Marrison_Master_Admin {
 
         $clients = $this->core->get_clients();
         $html = $this->render_clients_table_body($clients);
+        
+        // Build counters markup for dynamic refresh
+        ob_start();
+        $counts = [
+            'green' => 0, 'red' => 0, 'yellow' => 0, 'amber' => 0, 'blue' => 0, 'grey' => 0, 'black' => 0
+        ];
+        foreach ($clients as $url => $data) {
+            $ignored_plugins = $data['ignored_plugins'] ?? [];
+            $all_plugins_updates = $data['plugins_need_update'] ?? [];
+            $real_updates_count = 0;
+            foreach ($all_plugins_updates as $p) {
+                if (!in_array($p['path'], $ignored_plugins)) {
+                    $real_updates_count++;
+                }
+            }
+            $t_update_count = count($data['themes_need_update'] ?? []);
+            $trans_update = !empty($data['translations_need_update']);
+            $inactive_count = count($data['plugins_inactive'] ?? []);
+            $upstream_count = count($data['plugins_upstream_newer'] ?? []);
+            $status = $data['status'] ?? 'active';
+            
+            if ($status === 'stale') {
+                $counts['grey']++;
+            } elseif ($status === 'pending') {
+                $counts['blue']++;
+            } elseif ($status === 'unreachable') {
+                $counts['black']++;
+            } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
+                $counts['red']++;
+            } elseif ($upstream_count > 0) {
+                $counts['amber']++;
+            } elseif ($inactive_count > 0) {
+                $counts['yellow']++;
+            } else {
+                $counts['green']++;
+            }
+        }
+        ?>
+        <?php if (intval($counts['green']) > 0): ?>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#46b450;"></span><span><?php echo intval($counts['green']); ?></span></div>
+        <?php endif; ?>
+        <?php if (intval($counts['red']) > 0): ?>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#dc3232;"></span><span><?php echo intval($counts['red']); ?></span></div>
+        <?php endif; ?>
+        <?php if (intval($counts['amber']) > 0): ?>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#ffb000;"></span><span><?php echo intval($counts['amber']); ?></span></div>
+        <?php endif; ?>
+        <?php if (intval($counts['yellow']) > 0): ?>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#f0c330;"></span><span><?php echo intval($counts['yellow']); ?></span></div>
+        <?php endif; ?>
+        <?php if (intval($counts['blue']) > 0): ?>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#2271b1;"></span><span><?php echo intval($counts['blue']); ?></span></div>
+        <?php endif; ?>
+        <?php if (intval($counts['grey']) > 0): ?>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#888888;"></span><span><?php echo intval($counts['grey']); ?></span></div>
+        <?php endif; ?>
+        <?php if (intval($counts['black']) > 0): ?>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#000000;"></span><span><?php echo intval($counts['black']); ?></span></div>
+        <?php endif; ?>
+        <?php
+        $counters = ob_get_clean();
 
         if ($success) {
-            wp_send_json_success(['html' => $html, 'message' => $msg]);
+            wp_send_json_success(['html' => $html, 'message' => $msg, 'counters' => $counters]);
         } else {
-            wp_send_json_error(['html' => $html, 'message' => $msg]);
+            wp_send_json_error(['html' => $html, 'message' => $msg, 'counters' => $counters]);
         }
     }
 
@@ -1629,9 +1686,14 @@ class Marrison_Master_Admin {
                     cmd: 'noop',
                     nonce: marrison_vars.nonce
                 }, function(response) {
-                    if (response && response.success && response.data && response.data.html) {
-                        tbody.html(response.data.html);
-                        try { bindEvents(); } catch(e) {}
+                        if (response && response.success && response.data) {
+                            if (response.data.html) {
+                                tbody.html(response.data.html);
+                                try { bindEvents(); } catch(e) {}
+                            }
+                            if (response.data.counters) {
+                                $('.marrison-counters').html(response.data.counters);
+                            }
                     }
                 });
             }
@@ -1879,9 +1941,15 @@ class Marrison_Master_Admin {
                             client_url: clientUrl,
                             bulk_mode: 'true',
                             nonce: marrison_vars.nonce
-                        }, function(response) {
-                            if (response.success) successCount++;
-                            else errorCount++;
+                    }, function(response) {
+                        if (response.success) {
+                            successCount++;
+                            if (response.data && response.data.counters) {
+                                $('.marrison-counters').html(response.data.counters);
+                            }
+                        } else {
+                            errorCount++;
+                        }
                         }).fail(function() {
                             errorCount++;
                         }).always(function() {
@@ -1946,9 +2014,15 @@ class Marrison_Master_Admin {
                             client_url: clientUrl,
                             bulk_mode: 'true',
                             nonce: marrison_vars.nonce
-                        }, function(response) {
-                            if (response.success) successCount++;
-                            else errorCount++;
+                    }, function(response) {
+                        if (response.success) {
+                            successCount++;
+                            if (response.data && response.data.counters) {
+                                $('.marrison-counters').html(response.data.counters);
+                            }
+                        } else {
+                            errorCount++;
+                        }
                         }).fail(function() {
                             errorCount++;
                         }).always(function() {

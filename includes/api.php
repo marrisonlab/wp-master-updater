@@ -187,10 +187,13 @@ class Marrison_Master_API {
         $this->core->touch_client_last_sync($site_url);
         $push = $this->core->consume_agent_push_request($site_url);
         $opts = $this->core->consume_agent_update_request($site_url);
+        $restore = $this->core->consume_agent_restore_request($site_url);
         return rest_ensure_response([
             'push_requested' => $push,
             'update_requested' => $opts !== null,
-            'update_options' => $opts
+            'update_options' => $opts,
+            'restore_requested' => $restore !== null,
+            'restore_data' => $restore
         ]);
     }
 }

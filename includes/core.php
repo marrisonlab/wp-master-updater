@@ -270,6 +270,27 @@ class Marrison_Master_Core {
         }
         return null;
     }
+
+    public function request_agent_restore($site_url, $filename) {
+        $requests = get_option('marrison_restore_requests', []);
+        $requests[untrailingslashit($site_url)] = [
+            'filename' => $filename
+        ];
+        update_option('marrison_restore_requests', $requests);
+        return true;
+    }
+
+    public function consume_agent_restore_request($site_url) {
+        $key = untrailingslashit($site_url);
+        $requests = get_option('marrison_restore_requests', []);
+        if (!empty($requests[$key])) {
+            $data = $requests[$key];
+            unset($requests[$key]);
+            update_option('marrison_restore_requests', $requests);
+            return $data;
+        }
+        return null;
+    }
     /**
      * Fetch private repository data (Plugins & Themes)
      */
@@ -442,13 +463,25 @@ class Marrison_Master_Core {
     }
 
     public function trigger_restore_backup($client_url, $backup_filename) {
-        $response = wp_remote_post($client_url . '/wp-json/wp-agent-updater/v1/backups/restore', [
+        $headers = [];
+        $token = get_option('marrison_master_api_token');
+        if (!empty($token)) {
+            $headers['x-marrison-token'] = $token;
+        }
+
+        $response = wp_remote_post(untrailingslashit($client_url) . '/wp-json/wp-agent-updater/v1/backups/restore', [
             'body' => ['filename' => $backup_filename],
-            'timeout' => 60,
-            'sslverify' => false
+            'timeout' => 600,
+            'sslverify' => false,
+            'headers' => $headers
         ]);
 
         if (is_wp_error($response)) {
+            $code = $response->get_error_code();
+            $msg = $response->get_error_message();
+            if ($code === 'http_request_failed' && stripos($msg, 'cURL error 28') !== false) {
+                return true;
+            }
             return $response;
         }
 

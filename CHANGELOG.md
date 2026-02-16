@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.3] - 2026-02-16
+
+### Changed
+- Restore eseguito via richiesta al polling dell’Agent (push‑model): elimina cURL 28.
+- Master marca il client come pending al restore e aggiorna contatori via AJAX.
+- Risposte AJAX ora includono anche i contatori LED per refresh immediato.
+
 ## [1.1.2.2] - 2026-02-16
 
 ### Added
