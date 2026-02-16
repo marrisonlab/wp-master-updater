@@ -18,13 +18,95 @@ class Marrison_Master_Core {
             $ignored_plugins = $clients[$site_url]['ignored_plugins'];
         }
 
-        // Use site_url as key
-        $clients[$site_url] = array_merge($data, [
+        $client = array_merge($data, [
             'last_sync' => current_time('mysql'),
-            'status' => 'active', // Explicitly mark as active on successful update
+            'status' => 'active',
             'ignored_plugins' => $ignored_plugins
         ]);
+        
+        $repo_data = $this->get_private_repo_data();
+        $client['plugins_upstream_newer'] = $this->detect_plugins_upstream_newer($client, $repo_data);
+
+        $clients[$site_url] = $client;
         update_option($this->option_name, $clients);
+    }
+
+    private function detect_plugins_upstream_newer($client_data, $repo_data) {
+        $result = [];
+        if (empty($repo_data['plugins']) || empty($client_data['plugins_need_update'])) {
+            return $result;
+        }
+
+        $updates_by_path = [];
+        foreach ($client_data['plugins_need_update'] as $item) {
+            if (!isset($item['path'])) {
+                continue;
+            }
+            $updates_by_path[$item['path']] = $item;
+        }
+
+        if (empty($updates_by_path)) {
+            return $result;
+        }
+
+        $installed = [];
+        foreach ($client_data['plugins_active'] as $p) {
+            if (isset($p['path'])) {
+                $installed[$p['path']] = $p;
+            }
+        }
+        foreach ($client_data['plugins_inactive'] as $p) {
+            if (isset($p['path']) && !isset($installed[$p['path']])) {
+                $installed[$p['path']] = $p;
+            }
+        }
+
+        if (empty($installed)) {
+            return $result;
+        }
+
+        $repo_plugins = $repo_data['plugins'];
+
+        foreach ($installed as $path => $plugin) {
+            if (!isset($updates_by_path[$path])) {
+                continue;
+            }
+
+            $update = $updates_by_path[$path];
+            if (empty($update['new_version'])) {
+                continue;
+            }
+            $latest_version = $update['new_version'];
+
+            $slug = dirname($path);
+            if ($slug === '.') {
+                $slug = basename($path, '.php');
+            }
+
+            if (!isset($repo_plugins[$slug])) {
+                continue;
+            }
+
+            $repo_item = $repo_plugins[$slug];
+            $private_version = $repo_item['version'] ?? ($repo_item['new_version'] ?? null);
+            if (!$private_version) {
+                continue;
+            }
+
+            if (version_compare($private_version, $latest_version, '>=')) {
+                continue;
+            }
+
+            $result[] = [
+                'path' => $path,
+                'name' => $plugin['name'] ?? '',
+                'installed_version' => $plugin['version'] ?? '',
+                'private_version' => $private_version,
+                'latest_version' => $latest_version
+            ];
+        }
+
+        return $result;
     }
 
     public function toggle_ignore_plugin($site_url, $plugin_path, $ignore) {
@@ -213,9 +295,6 @@ class Marrison_Master_Core {
         return $data;
     }
 
-    /**
-     * Helper to fetch and parse repo JSON
-     */
     private function fetch_repo_json($url) {
         $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false]);
         if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
@@ -225,7 +304,6 @@ class Marrison_Master_Core {
         $body = wp_remote_retrieve_body($response);
         $json = json_decode($body, true);
 
-        // Fallback for packages.json convention
         if (json_last_error() !== JSON_ERROR_NONE) {
             $url_fallback = untrailingslashit($url) . '/packages.json';
             $response = wp_remote_get($url_fallback, ['timeout' => 15, 'sslverify' => false]);
@@ -235,13 +313,28 @@ class Marrison_Master_Core {
             }
         }
 
-        if (!$json || !is_array($json)) return [];
+        if (!$json || !is_array($json)) {
+            return [];
+        }
 
-        // Normalize structure
-        if (isset($json['packages'])) return $json['packages'];
-        if (isset($json['plugins'])) return $json['plugins'];
-        if (isset($json['themes'])) return $json['themes'];
-        
+        if (isset($json['packages'])) {
+            $json = $json['packages'];
+        } elseif (isset($json['plugins'])) {
+            $json = $json['plugins'];
+        } elseif (isset($json['themes'])) {
+            $json = $json['themes'];
+        }
+
+        if (is_array($json) && isset($json[0]) && is_array($json[0]) && isset($json[0]['slug'])) {
+            $assoc = [];
+            foreach ($json as $item) {
+                if (!empty($item['slug'])) {
+                    $assoc[$item['slug']] = $item;
+                }
+            }
+            $json = $assoc;
+        }
+
         return $json;
     }
     

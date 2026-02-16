@@ -1070,6 +1070,7 @@ class Marrison_Master_Admin {
                     $t_update_count = count($data['themes_need_update'] ?? []);
                     $trans_update = !empty($data['translations_need_update']);
                     $inactive_count = count($data['plugins_inactive'] ?? []);
+                    $upstream_count = count($data['plugins_upstream_newer'] ?? []);
                     $status = $data['status'] ?? 'active';
                     
                     // LED Logic
@@ -1088,6 +1089,9 @@ class Marrison_Master_Admin {
                     } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
                         $led_color = '#dc3232'; // Red
                         $led_title = 'Updates available';
+                    } elseif ($upstream_count > 0) {
+                        $led_color = '#ffb000'; // Amber
+                        $led_title = 'Upstream newer than private (' . $upstream_count . ')';
                     } elseif ($inactive_count > 0) {
                         $led_color = '#f0c330'; // Yellow
                         $led_title = 'There are ' . $inactive_count . ' inactive plugins';
@@ -1116,6 +1120,9 @@ class Marrison_Master_Admin {
                                 : '<span style="color:#46b450">Updated</span>';
                             if ($p_update_count > $real_updates_count) {
                                 echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>';
+                            }
+                            if ($upstream_count > 0) {
+                                echo ' <span style="color:#ffb000; font-size:0.9em;">Upstream: ' . $upstream_count . '</span>';
                             }
                         }
                         ?>
@@ -1232,6 +1239,7 @@ class Marrison_Master_Admin {
                             $all_active = $data['plugins_active'] ?? [];
                             $all_inactive = $data['plugins_inactive'] ?? [];
                             $all_updates = $data['plugins_need_update'] ?? [];
+                            $upstream_newer = $data['plugins_upstream_newer'] ?? [];
                             
                             $update_paths = array_column($all_updates, 'path');
                             
@@ -1281,6 +1289,20 @@ class Marrison_Master_Admin {
                                                     </label>
                                                 </div>
                                             </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($upstream_newer)): ?>
+                                <h5 style="color: #f0c330;"><span class="dashicons dashicons-visibility"></span> Upstream updates (non ancora nel repository privato)</h5>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                                    <?php foreach ($upstream_newer as $p): ?>
+                                        <div style="padding: 12px; background: rgba(240,195,48,0.1); border-radius: 6px; border-left: 4px solid #f0c330;">
+                                            <strong style="color: #fff; display: block;"><?php echo esc_html($p['name']); ?></strong>
+                                            <span style="color: #ccc; font-size: 0.85em; display:block;">Installato: v. <?php echo esc_html($p['installed_version']); ?></span>
+                                            <span style="color: #ccc; font-size: 0.85em; display:block;">Privato: v. <?php echo esc_html($p['private_version']); ?></span>
+                                            <span style="color: #fff; font-size: 0.85em; display:block;">Upstream: v. <?php echo esc_html($p['latest_version']); ?></span>
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
@@ -1456,6 +1478,42 @@ class Marrison_Master_Admin {
             <?php $this->render_header('Connected Clients'); ?>
             <div id="marrison-notices"></div>
             
+            <?php 
+                $counts = [
+                    'green' => 0, 'red' => 0, 'yellow' => 0, 'amber' => 0, 'blue' => 0, 'grey' => 0, 'black' => 0
+                ];
+                foreach ($clients as $url => $data) {
+                    $ignored_plugins = $data['ignored_plugins'] ?? [];
+                    $all_plugins_updates = $data['plugins_need_update'] ?? [];
+                    $real_updates_count = 0;
+                    foreach ($all_plugins_updates as $p) {
+                        if (!in_array($p['path'], $ignored_plugins)) {
+                            $real_updates_count++;
+                        }
+                    }
+                    $t_update_count = count($data['themes_need_update'] ?? []);
+                    $trans_update = !empty($data['translations_need_update']);
+                    $inactive_count = count($data['plugins_inactive'] ?? []);
+                    $upstream_count = count($data['plugins_upstream_newer'] ?? []);
+                    $status = $data['status'] ?? 'active';
+                    
+                    if ($status === 'stale') {
+                        $counts['grey']++;
+                    } elseif ($status === 'pending') {
+                        $counts['blue']++;
+                    } elseif ($status === 'unreachable') {
+                        $counts['black']++;
+                    } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
+                        $counts['red']++;
+                    } elseif ($upstream_count > 0) {
+                        $counts['amber']++;
+                    } elseif ($inactive_count > 0) {
+                        $counts['yellow']++;
+                    } else {
+                        $counts['green']++;
+                    }
+                }
+            ?>
             <div class="tablenav top" style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
                 <div class="actions">
                     <button id="marrison-bulk-sync" class="button button-primary">Mass Sync</button>
@@ -1468,6 +1526,29 @@ class Marrison_Master_Admin {
                      <div id="marrison-progress-text" style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; line-height: 24px; font-size: 12px; font-weight: 600; color: #1d2327; text-shadow: 0 0 2px #fff;">0%</div>
                 </div>
                 <div id="marrison-bulk-status" style="font-weight: 600;"></div>
+                <div class="marrison-counters" style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+                    <?php if (intval($counts['green']) > 0): ?>
+                        <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#46b450;"></span><span><?php echo intval($counts['green']); ?></span></div>
+                    <?php endif; ?>
+                    <?php if (intval($counts['red']) > 0): ?>
+                        <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#dc3232;"></span><span><?php echo intval($counts['red']); ?></span></div>
+                    <?php endif; ?>
+                    <?php if (intval($counts['amber']) > 0): ?>
+                        <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#ffb000;"></span><span><?php echo intval($counts['amber']); ?></span></div>
+                    <?php endif; ?>
+                    <?php if (intval($counts['yellow']) > 0): ?>
+                        <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#f0c330;"></span><span><?php echo intval($counts['yellow']); ?></span></div>
+                    <?php endif; ?>
+                    <?php if (intval($counts['blue']) > 0): ?>
+                        <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#2271b1;"></span><span><?php echo intval($counts['blue']); ?></span></div>
+                    <?php endif; ?>
+                    <?php if (intval($counts['grey']) > 0): ?>
+                        <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#888888;"></span><span><?php echo intval($counts['grey']); ?></span></div>
+                    <?php endif; ?>
+                    <?php if (intval($counts['black']) > 0): ?>
+                        <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#000000;"></span><span><?php echo intval($counts['black']); ?></span></div>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <table class="wp-list-table widefat fixed striped">

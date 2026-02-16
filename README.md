@@ -72,8 +72,11 @@ Select multiple clients to perform group operations:
 ## Status Indicators
 
 - **Green** ✅: All up to date
-- **Yellow** ⚠️: Deactivated plugins present
 - **Red** ❌: Updates available
+- **Amber** 🟧: Upstream newer than private repository
+- **Yellow** ⚠️: Deactivated plugins present
+- **Blue** 🔵: Sync requested (pending)
+- **Grey** ⚪: Cache cleared, awaiting next sync (stale)
 - **Black** ⚫: Client unreachable
 
 ## Backup and Restore

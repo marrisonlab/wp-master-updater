@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.2] - 2026-02-16
+
+### Added
+- LED amber per “upstream più nuovo del repository privato”.
+- Contatori LED nella barra azioni, allineati a destra, visibili solo se > 0.
+- Sezione “Upstream updates (non ancora nel repository privato)” nei dettagli client.
+
+### Changed
+- Aggiornata legenda nella guida con nuovi stati LED (amber/blu/grigio).
+
 ## [1.1.2.1] - 2026-02-16
 
 ### Changed
