@@ -51,6 +51,26 @@ class Marrison_Master_Core {
         return true;
     }
     
+    public function mark_client_pending_sync($site_url) {
+        $clients = $this->get_clients();
+        $url_norm = untrailingslashit($site_url);
+        
+        $found_key = false;
+        foreach (array_keys($clients) as $key) {
+            if (untrailingslashit($key) === $url_norm) {
+                $found_key = $key;
+                break;
+            }
+        }
+        
+        if ($found_key === false) {
+            return;
+        }
+        
+        $clients[$found_key]['status'] = 'pending';
+        update_option($this->clients_option, $clients);
+    }
+    
     /**
      * Get master configuration
      */
@@ -236,6 +256,20 @@ class Marrison_Master_Core {
     public function trigger_client_update($site_url, $options = []) {
         $endpoint = untrailingslashit($site_url) . '/wp-json/marrison-agent/v1/update';
         
+        $headers = ['User-Agent' => 'Marrison-Master-Updater/1.0'];
+        $token = get_option('marrison_master_api_token');
+        $ts = time();
+        if (!empty($token)) {
+            $payload = wp_json_encode(array_merge([
+                'clear_cache' => true,
+                'update_plugins' => true,
+                'update_themes' => true,
+                'update_translations' => true
+            ], $options));
+            $headers['X-Marrison-Token'] = $token;
+            $headers['X-Marrison-Timestamp'] = (string)$ts;
+            $headers['X-Marrison-Signature'] = hash_hmac('sha256', $payload . '|' . $ts, $token);
+        }
         $response = wp_remote_post($endpoint, [
             'body' => array_merge([
                 'clear_cache' => true,
@@ -244,8 +278,8 @@ class Marrison_Master_Core {
                 'update_translations' => true
             ], $options),
             'timeout' => 300,
-            'sslverify' => false,
-            'headers' => ['User-Agent' => 'Marrison-Master-Updater/1.0']
+            'sslverify' => true,
+            'headers' => $headers
         ]);
         
         if (is_wp_error($response)) {
@@ -270,10 +304,18 @@ class Marrison_Master_Core {
     public function sync_client($site_url) {
         $endpoint = untrailingslashit($site_url) . '/wp-json/marrison-agent/v1/status';
         
+        $headers = ['User-Agent' => 'Marrison-Master-Updater/1.0'];
+        $token = get_option('marrison_master_api_token');
+        $ts = time();
+        if (!empty($token)) {
+            $headers['X-Marrison-Token'] = $token;
+            $headers['X-Marrison-Timestamp'] = (string)$ts;
+            $headers['X-Marrison-Signature'] = hash_hmac('sha256', $site_url . '|' . $ts, $token);
+        }
         $response = wp_remote_get($endpoint, [
             'timeout' => 30,
-            'sslverify' => false,
-            'headers' => ['User-Agent' => 'Marrison-Master-Updater/1.0']
+            'sslverify' => true,
+            'headers' => $headers
         ]);
         
         if (is_wp_error($response)) {

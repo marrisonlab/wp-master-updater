@@ -64,6 +64,54 @@ class Marrison_Master_Core {
         return true;
     }
 
+    public function touch_client_last_sync($site_url) {
+        $clients = $this->get_clients();
+        $url_norm = untrailingslashit($site_url);
+        $found_key = false;
+
+        if (isset($clients[$site_url])) {
+            $found_key = $site_url;
+        } else {
+            foreach (array_keys($clients) as $key) {
+                if (untrailingslashit($key) === $url_norm) {
+                    $found_key = $key;
+                    break;
+                }
+            }
+        }
+
+        if (!$found_key) {
+            return;
+        }
+
+        $clients[$found_key]['last_sync'] = current_time('mysql');
+        update_option($this->option_name, $clients);
+    }
+
+    public function mark_client_pending_sync($site_url) {
+        $clients = $this->get_clients();
+        $url_norm = untrailingslashit($site_url);
+        $found_key = false;
+
+        if (isset($clients[$site_url])) {
+            $found_key = $site_url;
+        } else {
+            foreach (array_keys($clients) as $key) {
+                if (untrailingslashit($key) === $url_norm) {
+                    $found_key = $key;
+                    break;
+                }
+            }
+        }
+
+        if (!$found_key) {
+            return;
+        }
+
+        $clients[$found_key]['status'] = 'pending';
+        update_option($this->option_name, $clients);
+    }
+
     public function mark_client_unreachable($site_url) {
         $clients = $this->get_clients();
         
@@ -101,6 +149,45 @@ class Marrison_Master_Core {
         return false;
     }
 
+    public function request_agent_push($site_url) {
+        $requests = get_option('marrison_push_requests', []);
+        $requests[untrailingslashit($site_url)] = true;
+        update_option('marrison_push_requests', $requests);
+        return true;
+    }
+
+    public function consume_agent_push_request($site_url) {
+        $key = untrailingslashit($site_url);
+        $requests = get_option('marrison_push_requests', []);
+        $requested = !empty($requests[$key]);
+        if ($requested) {
+            unset($requests[$key]);
+            update_option('marrison_push_requests', $requests);
+        }
+        return $requested;
+    }
+
+    public function request_agent_update($site_url, $options = []) {
+        $requests = get_option('marrison_update_requests', []);
+        $requests[untrailingslashit($site_url)] = [
+            'clear_cache' => isset($options['clear_cache']) ? (bool)$options['clear_cache'] : true,
+            'update_translations' => isset($options['update_translations']) ? (bool)$options['update_translations'] : true
+        ];
+        update_option('marrison_update_requests', $requests);
+        return true;
+    }
+
+    public function consume_agent_update_request($site_url) {
+        $key = untrailingslashit($site_url);
+        $requests = get_option('marrison_update_requests', []);
+        if (!empty($requests[$key])) {
+            $opts = $requests[$key];
+            unset($requests[$key]);
+            update_option('marrison_update_requests', $requests);
+            return $opts;
+        }
+        return null;
+    }
     /**
      * Fetch private repository data (Plugins & Themes)
      */
@@ -251,86 +338,14 @@ class Marrison_Master_Core {
      * Trigger remote update with cache clearing and translation support
      */
     public function trigger_remote_update($client_url) {
-        $response = wp_remote_post($client_url . '/wp-json/wp-agent-updater/v1/update', [
-            'body' => [
-                'clear_cache' => true,
-                'update_translations' => true
-            ],
-            'timeout' => 300,
-            'sslverify' => false
-        ]);
-
-        if (is_wp_error($response)) {
-            return $response;
-        }
-
-        $code = wp_remote_retrieve_response_code($response);
-        if ($code !== 200) {
-            $this->trigger_remote_sync($client_url, false);
-            return new WP_Error('http_error', "Remote server returned code $code");
-        }
-
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-        if (is_array($body) && isset($body['success']) && $body['success'] === false) {
-            $this->trigger_remote_sync($client_url, false);
-            return new WP_Error('update_failed', $body['message'] ?? 'Update failed');
-        }
-        
-        // Sync after update to refresh data
-        $this->trigger_remote_sync($client_url, false);
-        return $body;
+        return new WP_Error('update_disabled', 'Update pull disabilitato: l’Agent esegue su richiesta push');
     }
 
     /**
-     * Trigger remote sync with optimized timeout
+     * Trigger remote sync disabled (push-only architecture)
      */
     public function trigger_remote_sync($client_url, $mark_unreachable = true) {
-        // Request fresh data from Agent
-        // Append cache buster to avoid cached JSON responses (e.g. Varnish/Cloudflare)
-        $endpoint = trailingslashit($client_url) . 'wp-json/wp-agent-updater/v1/status';
-        $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
-
-        $response = $this->request_get_with_retry($endpoint);
-
-        if (is_wp_error($response)) {
-            if ($mark_unreachable) {
-                $this->mark_client_unreachable($client_url);
-            }
-            return $response;
-        }
-
-        $code = wp_remote_retrieve_response_code($response);
-        if ($code !== 200) {
-            if ($mark_unreachable) {
-                $this->mark_client_unreachable($client_url);
-            }
-            return new WP_Error('http_error', "Remote server returned code $code");
-        }
-
-        // Verify Content-Type is JSON (handles redirects to 404/Home which return HTML 200 OK)
-        $content_type = wp_remote_retrieve_header($response, 'content-type');
-        // Use stripos for case-insensitive check
-        if (stripos($content_type, 'application/json') === false) {
-            if ($mark_unreachable) {
-                $this->mark_client_unreachable($client_url);
-            }
-            return new WP_Error('invalid_content_type', 'Response was not JSON (Possible redirect or error page)');
-        }
-
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        if ($data && isset($data['site_url'])) {
-            // Inject private updates
-            $repo_data = $this->get_private_repo_data();
-            $this->compare_and_inject_updates($data, $repo_data);
-
-            $this->update_client_data($data);
-            return true;
-        }
-        
-        if ($mark_unreachable) {
-            $this->mark_client_unreachable($client_url);
-        }
-        return new WP_Error('invalid_response', 'Invalid response from agent');
+        return new WP_Error('sync_disabled', 'Sync pull disabilitato: l’Agent aggiorna il Master via push');
     }
 
     public function trigger_restore_backup($client_url, $backup_filename) {
@@ -360,78 +375,9 @@ class Marrison_Master_Core {
     }
 
     /**
-     * Bulk sync all clients in parallel for better performance
+     * Bulk sync disabled (push-only architecture)
      */
     public function bulk_sync_parallel($client_urls = null) {
-        if ($client_urls === null) {
-            $clients = $this->get_clients();
-            $client_urls = array_keys($clients);
-        }
-
-        if (empty($client_urls)) {
-            return ['success' => true, 'results' => []];
-        }
-
-        // Fetch private repo data once for all clients
-        $repo_data = $this->get_private_repo_data();
-
-        $results = [];
-        $requests = [];
-
-        // Build all requests
-        foreach ($client_urls as $url) {
-            $endpoint = trailingslashit($url) . 'wp-json/wp-agent-updater/v1/status';
-            $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
-            
-            $requests[$url] = [
-                'url' => $endpoint
-            ];
-        }
-
-        // Execute requests in parallel using WordPress HTTP API
-        foreach ($requests as $url => $request) {
-            $response = $this->request_get_with_retry($request['url']);
-
-            if (is_wp_error($response)) {
-                $this->mark_client_unreachable($url);
-                $results[$url] = [
-                    'success' => false,
-                    'error' => $response->get_error_message()
-                ];
-                continue;
-            }
-
-            $code = wp_remote_retrieve_response_code($response);
-            $content_type = wp_remote_retrieve_header($response, 'content-type');
-
-            if ($code !== 200 || stripos($content_type, 'application/json') === false) {
-                $this->mark_client_unreachable($url);
-                $results[$url] = [
-                    'success' => false,
-                    'error' => 'Invalid response'
-                ];
-                continue;
-            }
-
-            $data = json_decode(wp_remote_retrieve_body($response), true);
-            if ($data && isset($data['site_url'])) {
-                // Inject private updates
-                $this->compare_and_inject_updates($data, $repo_data);
-
-                $this->update_client_data($data);
-                $results[$url] = ['success' => true];
-            } else {
-                $this->mark_client_unreachable($url);
-                $results[$url] = [
-                    'success' => false,
-                    'error' => 'Invalid data format'
-                ];
-            }
-        }
-
-        return [
-            'success' => true,
-            'results' => $results
-        ];
+        return new WP_Error('sync_disabled', 'Bulk sync disabilitato: push-only');
     }
 }

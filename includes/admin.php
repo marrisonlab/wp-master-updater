@@ -304,6 +304,7 @@ class Marrison_Master_Admin {
         register_setting('marrison_master_options', 'marrison_private_themes_repo');
         register_setting('marrison_master_options', 'marrison_enable_private_plugins');
         register_setting('marrison_master_options', 'marrison_enable_private_themes');
+        register_setting('marrison_master_options', 'marrison_master_api_token');
     }
 
     public function render_settings() {
@@ -645,6 +646,38 @@ class Marrison_Master_Admin {
                                 Immediately check the GitHub repository to see if a newer version of WP Master Updater is available.
                             </p>
                         </div>
+                        
+                        <div class="mmu-settings-card">
+                            <h2>API Security</h2>
+                            <p class="description">
+                                Set an API token required by agents when polling or syncing. Leave empty to allow unauthenticated access (not recommended).
+                            </p>
+                            <table class="form-table">
+                                <tr valign="top">
+                                    <th scope="row"></th>
+                                    <td>
+                                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                            <input type="password"
+                                                name="marrison_master_api_token"
+                                                id="marrison_master_api_token"
+                                                value=""
+                                                class="regular-text"
+                                                placeholder="<?php echo esc_attr(get_option('marrison_master_api_token') ? '••••••••••••' : 'Enter API token'); ?>"
+                                                autocomplete="new-password" />
+                                            <button type="button" class="button" id="marrison-generate-api-token">Generate</button>
+                                            <button type="button" class="button" id="marrison-toggle-api-token">Show</button>
+                                            <button type="button" class="button" id="marrison-copy-api-token">Copy</button>
+                                        </div>
+                                        <p class="description">
+                                            Agents must include this token in the X-Marrison-Token header.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                            <div class="mmu-settings-save">
+                                <?php submit_button('Save Changes', 'primary', 'submit', false); ?>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mmu-settings-aside">
@@ -692,6 +725,47 @@ class Marrison_Master_Admin {
 
                 $('#marrison_refresh_repo_btn').on('click', function() {
                     loadRepoData(true);
+                });
+
+                $('#marrison-generate-api-token').on('click', function() {
+                    var length = 40;
+                    var charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+                    var result = '';
+                    if (window.crypto && window.crypto.getRandomValues) {
+                        var values = new Uint32Array(length);
+                        window.crypto.getRandomValues(values);
+                        for (var i = 0; i < length; i++) {
+                            result += charset[values[i] % charset.length];
+                        }
+                    } else {
+                        for (var j = 0; j < length; j++) {
+                            result += charset.charAt(Math.floor(Math.random() * charset.length));
+                        }
+                    }
+                    $('#marrison_master_api_token').val(result);
+                });
+
+                $('#marrison-toggle-api-token').on('click', function() {
+                    var input = $('#marrison_master_api_token');
+                    var isPassword = input.attr('type') === 'password';
+                    input.attr('type', isPassword ? 'text' : 'password');
+                    $(this).text(isPassword ? 'Hide' : 'Show');
+                });
+
+                $('#marrison-copy-api-token').on('click', function() {
+                    var value = $('#marrison_master_api_token').val();
+                    if (!value) {
+                        return;
+                    }
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(value);
+                    } else {
+                        var temp = $('<input>');
+                        $('body').append(temp);
+                        temp.val(value).select();
+                        document.execCommand('copy');
+                        temp.remove();
+                    }
                 });
 
                 function loadRepoData(force) {
@@ -857,12 +931,12 @@ class Marrison_Master_Admin {
         // Reset Client Data (Wipe plugin/theme info to force full re-sync)
         $clients = get_option('marrison_connected_clients', []);
         foreach ($clients as &$client) {
-             // Keep identity, wipe data
+             // Keep identity, wipe data and mark as stale
              $client = [
-                 'site_url' => $client['site_url'],
-                 'site_name' => $client['site_name'] ?? 'Unknown',
-                 'status' => 'active',
-                 'last_sync' => '-' // Reset sync time
+                'site_url' => $client['site_url'],
+                'site_name' => $client['site_name'] ?? 'Unknown',
+                'status' => 'stale',
+                'last_sync' => '-' // Reset sync time
              ];
         }
         update_option('marrison_connected_clients', $clients);
@@ -887,25 +961,19 @@ class Marrison_Master_Admin {
         $success = true;
 
         if ($action === 'sync') {
-            $res = $this->core->trigger_remote_sync($client_url);
-            if (is_wp_error($res)) {
-                $success = false;
-                $msg = 'Sync Error: ' . $res->get_error_message();
-            } else {
-                $msg = 'Sync Started successfully';
-            }
+            $this->core->request_agent_push($client_url);
+            $this->core->mark_client_pending_sync($client_url);
+            $success = true;
+            $msg = 'Richiesta push inviata all’Agent';
             if ($is_bulk) {
-                if ($success) wp_send_json_success(['message' => $msg]);
-                else wp_send_json_error(['message' => $msg]);
+                wp_send_json_success(['message' => $msg]);
             }
         } elseif ($action === 'update') {
-            $res = $this->core->trigger_remote_update($client_url);
-            if (is_wp_error($res)) {
-                $success = false;
-                $msg = 'Update Error: ' . $res->get_error_message();
-            } else {
-                $msg = 'Update completed (plugins, themes, and translations)';
-            }
+            $this->core->request_agent_update($client_url, [
+                'clear_cache' => true,
+                'update_translations' => true
+            ]);
+            $msg = 'Richiesta update inviata all’Agent';
         } elseif ($action === 'restore') {
             if (empty($backup_file)) {
                 $success = false;
@@ -969,7 +1037,10 @@ class Marrison_Master_Admin {
                     $led_color = '#46b450'; // Green
                     $led_title = 'Everything updated';
                     
-                    if ($status === 'unreachable') {
+                    if ($status === 'stale') {
+                        $led_color = '#888888'; // Grey
+                        $led_title = 'Cache cleared, awaiting next sync';
+                    } elseif ($status === 'unreachable') {
                         $led_color = '#000000'; // Black
                         $led_title = 'Agent unreachable';
                     } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
@@ -992,19 +1063,43 @@ class Marrison_Master_Admin {
                     <td><strong style="display: block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo esc_attr($data['site_name']); ?>"><?php echo esc_html($data['site_name']); ?></strong></td>
                     <td><a href="<?php echo esc_url($url); ?>" target="_blank"><?php echo esc_html($url); ?></a></td>
                     <td>
-                        <?php echo $real_updates_count > 0 ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>' : '<span style="color:#46b450">Updated</span>'; ?>
-                        <?php if ($p_update_count > $real_updates_count) echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>'; ?>
+                        <?php
+                        if ($status === 'stale') {
+                            echo '<span style="color:#646970; opacity:0.8;">Unknown</span>';
+                        } else {
+                            echo $real_updates_count > 0
+                                ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>'
+                                : '<span style="color:#46b450">Updated</span>';
+                            if ($p_update_count > $real_updates_count) {
+                                echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>';
+                            }
+                        }
+                        ?>
                     </td>
                     <td>
-                        <?php echo $t_update_count > 0 ? '<span style="color:#dc3232">Updates: ' . $t_update_count . '</span>' : '<span style="color:#46b450">Updated</span>'; ?>
+                        <?php
+                        if ($status === 'stale') {
+                            echo '<span style="color:#646970; opacity:0.8;">Unknown</span>';
+                        } else {
+                            echo $t_update_count > 0
+                                ? '<span style="color:#dc3232">Updates: ' . $t_update_count . '</span>'
+                                : '<span style="color:#46b450">Updated</span>';
+                        }
+                        ?>
                     </td>
                     <td><?php echo esc_html($data['last_sync'] ?? '-'); ?></td>
-                    <td>
-                        <form style="display:inline;" onsubmit="return false;">
+                    <td style="white-space: nowrap;">
+                        <form class="mmu-actions-inline" onsubmit="return false;">
                             <input type="hidden" name="client_url" value="<?php echo esc_attr($url); ?>">
-                            <button type="button" value="sync" class="button button-secondary marrison-action-btn">Sync</button>
-                            <button type="button" value="update" class="button button-primary marrison-action-btn" <?php echo ($is_green || $is_yellow || $is_black) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>Update</button>
-                            <button type="button" value="delete" class="button button-link-delete marrison-action-btn" style="color: #dc3232;">Delete</button>
+                            <button type="button" value="sync" class="button button-secondary button-small marrison-action-btn" title="Request Push" aria-label="Request Push">
+                                <span class="dashicons dashicons-update"></span>
+                            </button>
+                            <button type="button" value="update" class="button button-primary button-small marrison-action-btn" title="Request Update" aria-label="Request Update" <?php echo ($is_green || $is_yellow || $is_black) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>
+                                <span class="dashicons dashicons-migrate"></span>
+                            </button>
+                            <button type="button" value="delete" class="button button-link-delete button-small marrison-action-btn" title="Delete" aria-label="Delete">
+                                <span class="dashicons dashicons-trash"></span>
+                            </button>
                         </form>
                     </td>
                 </tr>
@@ -1291,6 +1386,24 @@ class Marrison_Master_Admin {
                 opacity: 0.7;
                 cursor: wait;
             }
+            .mmu-actions-inline {
+                display: inline-flex;
+                gap: 4px;
+                align-items: center;
+            }
+            .mmu-actions-inline .button {
+                padding: 0 4px;
+                height: 28px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .mmu-actions-inline .dashicons {
+                font-size: 16px;
+                width: 16px;
+                height: 16px;
+                line-height: 1;
+            }
         </style>
 
         <div class="wrap">
@@ -1302,6 +1415,7 @@ class Marrison_Master_Admin {
                     <button id="marrison-bulk-sync" class="button button-primary">Mass Sync</button>
                     <button id="marrison-bulk-update" class="button button-secondary" style="margin: 0 5px;">Mass Update</button>
                     <button id="marrison-clear-cache" class="button button-secondary">Clear Master Cache</button>
+                    <button id="marrison-refresh-table" class="button button-secondary">Refresh</button>
                 </div>
                 <div id="marrison-progress-wrap" style="display:none; flex: 1; max-width: 400px; border: 1px solid #c3c4c7; height: 24px; background: #fff; position: relative; border-radius: 4px; overflow: hidden;">
                      <div id="marrison-progress-bar" style="width: 0%; height: 100%; background: #46b450; transition: width 0.3s ease;"></div>
@@ -1417,7 +1531,7 @@ class Marrison_Master_Admin {
                 var progressIntervalId = null;
                 var progressMessage = cmd + ' on ' + clientName + ': In progress...';
                 if(cmd === 'sync' || cmd === 'update' || cmd === 'restore') {
-                    btn.text('In progress...');
+                    btn.addClass('loading').attr('aria-busy', 'true');
                     window.marrisonUpdateProgress(10, 100, progressMessage);
                 }
 
@@ -1498,7 +1612,7 @@ class Marrison_Master_Admin {
                     } catch(e) { console.error('Button enable failed', e); }
 
                     try {
-                        if (btn && btn.length) btn.text(originalButtonText);
+                        if (btn && btn.length) btn.removeClass('loading').removeAttr('aria-busy').text(originalButtonText);
                     } catch(e) { console.error('Button text reset failed', e); }
                 });
             }
@@ -1742,6 +1856,25 @@ class Marrison_Master_Admin {
                         }
                     }).always(function() {
                         btn.prop('disabled', false).text('Clear Master Cache');
+                    });
+                });
+
+                $('#marrison-refresh-table').on('click', function(e) {
+                    e.preventDefault();
+                    var btn = $(this);
+                    btn.prop('disabled', true).text('Refreshing...');
+
+                    $.post(ajaxurl, {
+                        action: 'marrison_master_action',
+                        nonce: marrison_vars.nonce,
+                        cmd: 'noop'
+                    }, function(response) {
+                        if (response.success && response.data && response.data.html) {
+                            $('#marrison-clients-body').html(response.data.html);
+                            bindEvents();
+                        }
+                    }).always(function() {
+                        btn.prop('disabled', false).text('Refresh');
                     });
                 });
             });

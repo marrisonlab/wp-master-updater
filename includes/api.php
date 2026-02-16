@@ -16,6 +16,41 @@ class Marrison_Master_API {
             'callback' => [$this, 'handle_sync_request'],
             'permission_callback' => '__return_true'
         ]);
+        register_rest_route('wp-master-updater/v1', '/push-request', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_push_request_check'],
+            'permission_callback' => '__return_true'
+        ]);
+        register_rest_route('wp-master-updater/v1', '/update-request', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_update_request_check'],
+            'permission_callback' => '__return_true'
+        ]);
+        register_rest_route('wp-master-updater/v1', '/poll', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_poll'],
+            'permission_callback' => '__return_true'
+        ]);
+    }
+
+    private function is_authorized($request) {
+        $token_required = get_option('marrison_master_api_token');
+        if (empty($token_required)) {
+            return true;
+        }
+        $ts = $request->get_header('x-marrison-timestamp');
+        $sig = $request->get_header('x-marrison-signature');
+        if ($ts && $sig) {
+            $now = time();
+            if (abs($now - (int)$ts) > 600) {
+                return false;
+            }
+            $message = $request->get_method() === 'POST' ? (string)$request->get_body() : (string)$request->get_param('site_url');
+            $expected = hash_hmac('sha256', $message . '|' . $ts, $token_required);
+            return hash_equals($expected, $sig);
+        }
+        $provided = $request->get_header('x-marrison-token');
+        return is_string($provided) && hash_equals($token_required, $provided);
     }
 
     private function start_guard($context) {
@@ -59,6 +94,12 @@ class Marrison_Master_API {
     }
 
     public function handle_sync_request($request) {
+        if (!$this->is_authorized($request)) {
+            return rest_ensure_response([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ]);
+        }
         $this->start_guard('Sync failed');
         $data = $request->get_json_params();
 
@@ -97,6 +138,59 @@ class Marrison_Master_API {
             'success' => true,
             'message' => 'Data synchronized successfully',
             'config' => $config
+        ]);
+    }
+
+    public function handle_push_request_check($request) {
+        if (!$this->is_authorized($request)) {
+            return rest_ensure_response(['requested' => false, 'message' => 'Unauthorized']);
+        }
+        $site_url = isset($_GET['site_url']) ? sanitize_text_field($_GET['site_url']) : '';
+        if (empty($site_url)) {
+            return rest_ensure_response(['requested' => false, 'message' => 'Missing site_url']);
+        }
+        $requested = $this->core->consume_agent_push_request($site_url);
+        return rest_ensure_response(['requested' => $requested]);
+    }
+
+    public function handle_update_request_check($request) {
+        if (!$this->is_authorized($request)) {
+            return rest_ensure_response(['requested' => false, 'message' => 'Unauthorized']);
+        }
+        $site_url = isset($_GET['site_url']) ? sanitize_text_field($_GET['site_url']) : '';
+        if (empty($site_url)) {
+            return rest_ensure_response(['requested' => false, 'message' => 'Missing site_url']);
+        }
+        $opts = $this->core->consume_agent_update_request($site_url);
+        if ($opts === null) {
+            return rest_ensure_response(['requested' => false]);
+        }
+        return rest_ensure_response(['requested' => true, 'options' => $opts]);
+    }
+
+    public function handle_poll($request) {
+        if (!$this->is_authorized($request)) {
+            return rest_ensure_response([
+                'push_requested' => false,
+                'update_requested' => false,
+                'message' => 'Unauthorized'
+            ]);
+        }
+        $site_url = isset($_GET['site_url']) ? sanitize_text_field($_GET['site_url']) : '';
+        if (empty($site_url)) {
+            return rest_ensure_response([
+                'push_requested' => false,
+                'update_requested' => false,
+                'message' => 'Missing site_url'
+            ]);
+        }
+        $this->core->touch_client_last_sync($site_url);
+        $push = $this->core->consume_agent_push_request($site_url);
+        $opts = $this->core->consume_agent_update_request($site_url);
+        return rest_ensure_response([
+            'push_requested' => $push,
+            'update_requested' => $opts !== null,
+            'update_options' => $opts
         ]);
     }
 }

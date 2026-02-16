@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-02-16
+
+### Added
+- API token authentication between Master and Agent with HMAC-signed requests.
+- API Security settings card with token generator, show/hide, and copy actions.
+- Refresh button above clients table to reload status via AJAX.
+
+### Changed
+- "Last Sync" now reflects the last successful communication (poll or push) with each Agent.
+- Clear Master Cache marks clients as stale with a grey indicator until the next sync.
+- Sync requests mark clients as pending until the Agent sends updated data.
+
 ## [1.0.9] - 2026-02-13
 ### Added
 - Added functionality to ignore specific plugins from update checks.

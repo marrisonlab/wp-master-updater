@@ -59,10 +59,33 @@ class Marrison_Master_API {
         ]);
     }
     
+    private function is_authorized($request) {
+        $token_required = get_option('marrison_master_api_token');
+        if (empty($token_required)) {
+            return true;
+        }
+        $ts = $request->get_header('x-marrison-timestamp');
+        $sig = $request->get_header('x-marrison-signature');
+        if ($ts && $sig) {
+            $now = time();
+            if (abs($now - (int)$ts) > 600) {
+                return false;
+            }
+            $message = $request->get_method() === 'POST' ? (string)$request->get_body() : (string)$request->get_param('site_url');
+            $expected = hash_hmac('sha256', $message . '|' . $ts, $token_required);
+            return hash_equals($expected, $sig);
+        }
+        $provided = $request->get_header('x-marrison-token');
+        return is_string($provided) && hash_equals($token_required, $provided);
+    }
+    
     /**
      * Handle client sync
      */
     public function handle_sync($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         try {
             $data = $request->get_json_params();
             
@@ -102,6 +125,9 @@ class Marrison_Master_API {
      * Handle client update
      */
     public function handle_update($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         $site_url = urldecode($request->get_param('site_url'));
         $options = $request->get_json_params() ?? [];
         
