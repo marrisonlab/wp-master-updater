@@ -157,6 +157,25 @@ class Marrison_Master_Core {
         
         return $json;
     }
+    
+    private function request_get_with_retry($url) {
+        $timeouts = [20, 30];
+        foreach ($timeouts as $t) {
+            $response = wp_remote_get($url, [
+                'timeout' => $t,
+                'sslverify' => false
+            ]);
+            if (!is_wp_error($response)) {
+                return $response;
+            }
+            $code = $response->get_error_code();
+            $msg = $response->get_error_message();
+            if ($code !== 'http_request_failed' && stripos($msg, 'cURL error 28') === false) {
+                return $response;
+            }
+        }
+        return $response;
+    }
 
     /**
      * Compare client installed items with private repo and inject updates
@@ -271,10 +290,7 @@ class Marrison_Master_Core {
         $endpoint = trailingslashit($client_url) . 'wp-json/wp-agent-updater/v1/status';
         $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
 
-        $response = wp_remote_get($endpoint, [
-            'timeout' => 10, // Reduced from 15 to 10 seconds for faster scanning
-            'sslverify' => false
-        ]);
+        $response = $this->request_get_with_retry($endpoint);
 
         if (is_wp_error($response)) {
             if ($mark_unreachable) {
@@ -368,19 +384,13 @@ class Marrison_Master_Core {
             $endpoint = add_query_arg('marrison_ts', time(), $endpoint);
             
             $requests[$url] = [
-                'url' => $endpoint,
-                'type' => 'GET',
-                'timeout' => 15,
-                'sslverify' => false
+                'url' => $endpoint
             ];
         }
 
         // Execute requests in parallel using WordPress HTTP API
         foreach ($requests as $url => $request) {
-            $response = wp_remote_get($request['url'], [
-                'timeout' => $request['timeout'],
-                'sslverify' => $request['sslverify']
-            ]);
+            $response = $this->request_get_with_retry($request['url']);
 
             if (is_wp_error($response)) {
                 $this->mark_client_unreachable($url);
