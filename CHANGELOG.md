@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.6] - 2026-02-17
+
+### Added
+- Dark mode styling for details panel with glassmorphism effect
+- Minimal elegant restyle of table and buttons
+- Call strategy label with colored background and black text
+
+### Changed
+- Improved button alignment and spacing
+- Removed borders from toolbar for cleaner design
+- Compacted actions column to 180px width
+- Enhanced theme slug extraction in themes repository
+
 ## [1.1.2.5] - 2026-02-17
 
 ### Added
