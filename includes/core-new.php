@@ -216,7 +216,10 @@ class Marrison_Master_Core {
         
         $client_data['themes_need_update'] = $client_data['themes_need_update'] ?? [];
         
-        foreach ($client_data['themes'] as $slug => $theme) {
+        foreach ($client_data['themes'] as $theme) {
+            $slug = $theme['slug'] ?? '';
+            if (empty($slug)) continue;
+            
             if (isset($repo_themes[$slug])) {
                 $repo_item = $repo_themes[$slug];
                 $current_version = $theme['version'] ?? '0.0.0';
