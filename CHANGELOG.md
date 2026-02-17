@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.4] - 2026-02-17
+
+### Changed
+- Allineata versione con Agent per miglioramenti ai temi da repo privato.
+
 ## [1.1.2.3] - 2026-02-16
 
 ### Changed
