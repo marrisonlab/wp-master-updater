@@ -146,7 +146,7 @@ class Marrison_Master_Admin {
     }
 
     public function add_action_links($links) {
-        $settings_link = '<a href="admin.php?page=marrison-master-settings">Repositories</a>';
+        $settings_link = '<a href="admin.php?page=marrison-master-settings">Settings</a>';
         array_unshift($links, $settings_link);
         return $links;
     }
@@ -162,8 +162,8 @@ class Marrison_Master_Admin {
         );
         add_submenu_page(
             'wp-master-updater',
-            'Repositories',
-            'Repositories',
+            'Settings',
+            'Settings',
             'manage_options',
             'marrison-master-settings',
             [$this, 'render_settings']
@@ -207,7 +207,7 @@ class Marrison_Master_Admin {
         <style>
             .mmu-guide-grid {
                 display: grid;
-                grid-template-columns: 1fr 1fr;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
                 gap: 20px;
                 margin-top: 20px;
             }
@@ -271,8 +271,24 @@ class Marrison_Master_Admin {
                             <span><strong>Red:</strong> Updates available. There are plugins, themes, or translations to update.</span>
                         </li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #ffb000; margin-right: 10px; background: #ffb000; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Amber:</strong> Upstream repository has newer versions than your private repo (see “Upstream updates” box).</span>
+                        </li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
                             <span class="mmu-led" style="color: #f0c330; margin-right: 10px; background: #f0c330; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
                             <span><strong>Yellow:</strong> Inactive plugins found. The site has plugins installed but not activated.</span>
+                        </li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #2271b1; margin-right: 10px; background: #2271b1; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Blue:</strong> Sync or operation requested and waiting for the Agent to respond.</span>
+                        </li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #fd5ec0; margin-right: 10px; background: #fd5ec0; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Pink:</strong> Upstream updates available but private repo is behind. Check the “Upstream updates” section to align your private repository.</span>
+                        </li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center;">
+                            <span class="mmu-led" style="color: #888888; margin-right: 10px; background: #888888; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
+                            <span><strong>Grey:</strong> Master cache cleared. Waiting for the next sync from the Agent.</span>
                         </li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center;">
                             <span class="mmu-led" style="color: #000000; margin-right: 10px; background: #000000; width: 12px; height: 12px; display: inline-block; border-radius: 50%; flex-shrink: 0;"></span>
@@ -281,7 +297,21 @@ class Marrison_Master_Admin {
                     </ul>
                 </div>
 
-                <!-- 2. Configuration & Repositories -->
+                <!-- 2. Master ↔ Agent Connection & API -->
+                <div class="mmu-guide-box">
+                    <h2>Master ↔ Agent Connection & API</h2>
+                    <p>To connect WP Master Updater with a client site running WP Agent Updater:</p>
+                    <ol>
+                        <li>On the client site, install and activate the <strong>WP Agent Updater</strong> plugin.</li>
+                        <li>In the Agent settings, configure the <strong>Master URL</strong> with the full URL of this Master.</li>
+                        <li>On this Master, open the <strong>Settings</strong> page and set an <strong>API token</strong> (optional but recommended).</li>
+                        <li>Copy the same API token into the Agent settings so that polling and sync requests are authenticated.</li>
+                        <li>Use the “Add Client” form in the Master dashboard to register the Agent site.</li>
+                    </ol>
+                    <p><strong>Important:</strong> if you change the API token on the Master, all Agents using the old token will stop working until you update the token on each client site.</p>
+                </div>
+
+                <!-- 3. Private Repositories -->
                 <div class="mmu-guide-box">
                     <h2>Private Repositories</h2>
                     <p>You can host your own private repositories for plugins and themes. Follow these steps:</p>
@@ -289,7 +319,7 @@ class Marrison_Master_Admin {
                         <li>Create a folder on your server (e.g. <code>/my-plugins-repo/</code>).</li>
 						<li>Upload the <strong>Plugin Index</strong> file to this folder (rename it to <code>index.php</code> if necessary).</li>
                         <li>Upload your plugin ZIP files to this folder in the same format you would normally upload them to WordPress.</li>
-                        <li>Go to the <strong>Repositories</strong> tab in WP Master Updater.</li>
+                        <li>Go to the <strong>Settings</strong> tab in WP Master Updater.</li>
                         <li>Enable "Private Plugin Repositories" and enter the URL of your folder (e.g. <code>https://example.com/my-plugins-repo/</code>).</li>
                         <li>Repeat the same process for themes if necessary.</li>
                     </ol>
@@ -315,6 +345,7 @@ class Marrison_Master_Admin {
         register_setting('marrison_master_options', 'marrison_enable_private_plugins');
         register_setting('marrison_master_options', 'marrison_enable_private_themes');
         register_setting('marrison_master_options', 'marrison_master_api_token');
+        register_setting('marrison_master_options', 'marrison_call_strategy');
     }
 
     public function render_settings() {
@@ -526,8 +557,8 @@ class Marrison_Master_Admin {
 
         <div class="wrap mmu-settings-wrap">
             <div class="mmu-settings-header">
-                <?php $this->render_header('Repositories'); ?>
-                         </div>
+                <?php $this->render_header('Settings'); ?>
+            </div>
 
             <?php 
             $errors = get_settings_errors();
@@ -636,6 +667,36 @@ class Marrison_Master_Admin {
                                 </span>
                             </div>
 
+                            <div class="mmu-settings-save">
+                                <?php submit_button('Save Changes', 'primary', 'submit', false); ?>
+                            </div>
+                        </div>
+
+                        <div class="mmu-settings-card">
+                            <h2>Call Strategy</h2>
+                            <p class="description">
+                                Choose how the Master sends Sync/Update/Restore requests to the Agent.
+                            </p>
+                            <table class="form-table">
+                                <tr valign="top">
+                                    <th scope="row"></th>
+                                    <td>
+                                        <?php $strategy = get_option('marrison_call_strategy', 'queue_poll_now'); ?>
+                                        <label style="display:block; margin-bottom:8px;">
+                                            <input type="radio" name="marrison_call_strategy" value="push" <?php checked($strategy, 'push'); ?> />
+                                            <strong>Immediate push</strong> – try a direct call to the Agent. If it fails, queue and trigger execution immediately (fallback). Requires API token and reachable endpoint. Lowest latency.
+                                        </label>
+                                        <label style="display:block; margin-bottom:8px;">
+                                            <input type="radio" name="marrison_call_strategy" value="queue_poll_now" <?php checked($strategy, 'queue_poll_now'); ?> />
+                                            <strong>Queue and run now (poll-now)</strong> – put the request in the queue and ask the Agent to process it immediately. Robust and does not depend on site traffic.
+                                        </label>
+                                        <label style="display:block;">
+                                            <input type="radio" name="marrison_call_strategy" value="queue_only" <?php checked($strategy, 'queue_only'); ?> />
+                                            <strong>Queue only (legacy)</strong> – use the Agent WP‑Cron. No direct calls; on low-traffic sites execution may start after several minutes or hours.
+                                        </label>
+                                    </td>
+                                </tr>
+                            </table>
                             <div class="mmu-settings-save">
                                 <?php submit_button('Save Changes', 'primary', 'submit', false); ?>
                             </div>
@@ -1000,27 +1061,79 @@ class Marrison_Master_Admin {
         $success = true;
 
         if ($action === 'sync') {
-            $this->core->request_agent_push($client_url);
-            $this->core->mark_client_pending_sync($client_url);
+            $strategy = get_option('marrison_call_strategy', 'queue_poll_now');
+            if ($strategy === 'queue_only') {
+                $this->core->request_agent_push($client_url);
+                $this->core->mark_client_pending_sync($client_url);
+                $msg = 'Sync queued';
+            } else {
+                $this->core->request_agent_push($client_url);
+                $this->core->mark_client_pending_sync($client_url);
+                $this->core->notify_agent_poll_now($client_url);
+                $msg = ($strategy === 'push') ? 'Sync started immediately on Agent' : 'Sync queued and started immediately (poll-now)';
+            }
             $success = true;
-            $msg = 'Richiesta push inviata all’Agent';
             if ($is_bulk) {
                 wp_send_json_success(['message' => $msg]);
             }
         } elseif ($action === 'update') {
-            $this->core->request_agent_update($client_url, [
-                'clear_cache' => true,
-                'update_translations' => true
-            ]);
-            $msg = 'Richiesta update inviata all’Agent';
+            $strategy = get_option('marrison_call_strategy', 'queue_poll_now');
+            if ($strategy === 'push') {
+                $resp = $this->core->trigger_agent_update_now($client_url, [
+                    'clear_cache' => true,
+                    'update_translations' => true
+                ]);
+                if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) {
+                    $this->core->request_agent_update($client_url, [
+                        'clear_cache' => true,
+                        'update_translations' => true
+                    ]);
+                    $this->core->notify_agent_poll_now($client_url);
+                    $msg = 'Update queued and started immediately (fallback)';
+                } else {
+                    $msg = 'Update started on Agent';
+                }
+            } elseif ($strategy === 'queue_poll_now') {
+                $this->core->request_agent_update($client_url, [
+                    'clear_cache' => true,
+                    'update_translations' => true
+                ]);
+                $this->core->notify_agent_poll_now($client_url);
+                $msg = 'Update queued and started immediately (poll-now)';
+            } else {
+                $this->core->request_agent_update($client_url, [
+                    'clear_cache' => true,
+                    'update_translations' => true
+                ]);
+                $msg = 'Update queued';
+            }
         } elseif ($action === 'restore') {
             if (empty($backup_file)) {
                 $success = false;
                 $msg = 'Backup file missing';
             } else {
-                $this->core->request_agent_restore($client_url, $backup_file);
-                $this->core->mark_client_pending_sync($client_url);
-                $msg = 'Restore request sent to Agent';
+                $strategy = get_option('marrison_call_strategy', 'queue_poll_now');
+                if ($strategy === 'push') {
+                    $resp = $this->core->trigger_agent_restore_now($client_url, $backup_file);
+                    if (is_wp_error($resp) || wp_remote_retrieve_response_code($resp) !== 200) {
+                        $this->core->request_agent_restore($client_url, $backup_file);
+                        $this->core->mark_client_pending_sync($client_url);
+                        $this->core->notify_agent_poll_now($client_url);
+                        $msg = 'Restore queued and started immediately (fallback)';
+                    } else {
+                        $this->core->mark_client_pending_sync($client_url);
+                        $msg = 'Restore started on Agent';
+                    }
+                } elseif ($strategy === 'queue_poll_now') {
+                    $this->core->request_agent_restore($client_url, $backup_file);
+                    $this->core->mark_client_pending_sync($client_url);
+                    $this->core->notify_agent_poll_now($client_url);
+                    $msg = 'Restore queued and started immediately (poll-now)';
+                } else {
+                    $this->core->request_agent_restore($client_url, $backup_file);
+                    $this->core->mark_client_pending_sync($client_url);
+                    $msg = 'Restore queued';
+                }
             }
         } elseif ($action === 'delete') {
             $this->core->delete_client($client_url);

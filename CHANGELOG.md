@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.5] - 2026-02-17
+
+### Added
+- Call Strategy setting to choose between immediate push, queue+poll-now, or queue-only.
+
+### Changed
+- Settings page renamed from “Repo & Api” to “Settings” and texts unified in English.
+- Improved Agent call flow to reduce latency on low-traffic sites (poll-now endpoint).
+
 ## [1.1.2.4] - 2026-02-17
 
 ### Changed

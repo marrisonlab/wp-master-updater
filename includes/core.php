@@ -8,26 +8,60 @@ class Marrison_Master_Core {
         return get_option($this->option_name, []);
     }
 
+    private function normalize_site_url($url) {
+        $url = trim((string)$url);
+        if ($url === '') {
+            return '';
+        }
+        $url = untrailingslashit($url);
+        $parts = wp_parse_url($url);
+        if (!is_array($parts) || empty($parts['host'])) {
+            return $url;
+        }
+        $scheme = isset($parts['scheme']) ? strtolower($parts['scheme']) : 'https';
+        $host = strtolower($parts['host']);
+        $path = isset($parts['path']) ? rtrim($parts['path'], '/') : '';
+        $normalized = $scheme . '://' . $host;
+        if ($path !== '') {
+            $normalized .= $path;
+        }
+        return $normalized;
+    }
+
     public function update_client_data($data) {
         $clients = $this->get_clients();
-        $site_url = $data['site_url'];
-        
-        // Preserve ignored plugins
+        $raw_url = isset($data['site_url']) ? $data['site_url'] : '';
+        $normalized_url = $this->normalize_site_url($raw_url);
+
         $ignored_plugins = [];
-        if (isset($clients[$site_url]['ignored_plugins'])) {
-            $ignored_plugins = $clients[$site_url]['ignored_plugins'];
+        $ignored_themes = [];
+
+        foreach ($clients as $key => $client) {
+            if ($this->normalize_site_url($key) === $normalized_url) {
+                if (isset($client['ignored_plugins']) && is_array($client['ignored_plugins'])) {
+                    $ignored_plugins = array_values(array_unique(array_merge($ignored_plugins, $client['ignored_plugins'])));
+                }
+                if (isset($client['ignored_themes']) && is_array($client['ignored_themes'])) {
+                    $ignored_themes = array_values(array_unique(array_merge($ignored_themes, $client['ignored_themes'])));
+                }
+                if ($key !== $normalized_url) {
+                    unset($clients[$key]);
+                }
+            }
         }
 
         $client = array_merge($data, [
+            'site_url' => $normalized_url,
             'last_sync' => current_time('mysql'),
             'status' => 'active',
-            'ignored_plugins' => $ignored_plugins
+            'ignored_plugins' => $ignored_plugins,
+            'ignored_themes' => $ignored_themes
         ]);
-        
+
         $repo_data = $this->get_private_repo_data();
         $client['plugins_upstream_newer'] = $this->detect_plugins_upstream_newer($client, $repo_data);
 
-        $clients[$site_url] = $client;
+        $clients[$normalized_url] = $client;
         update_option($this->option_name, $clients);
     }
 
@@ -256,6 +290,7 @@ class Marrison_Master_Core {
             'update_translations' => isset($options['update_translations']) ? (bool)$options['update_translations'] : true
         ];
         update_option('marrison_update_requests', $requests);
+        $this->trigger_remote_cron($site_url);
         return true;
     }
 
@@ -277,6 +312,7 @@ class Marrison_Master_Core {
             'filename' => $filename
         ];
         update_option('marrison_restore_requests', $requests);
+        $this->trigger_remote_cron($site_url);
         return true;
     }
 
@@ -290,6 +326,79 @@ class Marrison_Master_Core {
             return $data;
         }
         return null;
+    }
+
+    public function trigger_remote_cron($site_url) {
+        $url = untrailingslashit($site_url) . '/wp-cron.php?doing_wp_cron=1';
+        $headers = [];
+        $token = get_option('marrison_master_api_token');
+        if (!empty($token)) {
+            $headers['x-marrison-token'] = $token;
+        }
+        wp_remote_get($url, [
+            'timeout' => 3,
+            'sslverify' => false,
+            'headers' => $headers
+        ]);
+    }
+
+    public function trigger_agent_update_now($site_url, $options = []) {
+        $headers = [];
+        $token = get_option('marrison_master_api_token');
+        if (!empty($token)) {
+            $headers['x-marrison-token'] = $token;
+            $ts = time();
+            $payload = json_encode([
+                'clear_cache' => isset($options['clear_cache']) ? (bool)$options['clear_cache'] : true,
+                'update_translations' => isset($options['update_translations']) ? (bool)$options['update_translations'] : true
+            ]);
+            $headers['x-marrison-timestamp'] = (string)$ts;
+            $headers['x-marrison-signature'] = hash_hmac('sha256', $payload . '|' . $ts, $token);
+            $headers['content-type'] = 'application/json';
+        }
+        $resp = wp_remote_post(untrailingslashit($site_url) . '/wp-json/wp-agent-updater/v1/update', [
+            'body' => isset($headers['content-type']) ? $payload : [
+                'clear_cache' => isset($options['clear_cache']) ? (bool)$options['clear_cache'] : true,
+                'update_translations' => isset($options['update_translations']) ? (bool)$options['update_translations'] : true
+            ],
+            'timeout' => 60,
+            'sslverify' => true,
+            'headers' => $headers
+        ]);
+        return $resp;
+    }
+
+    public function notify_agent_poll_now($site_url) {
+        $headers = [];
+        $token = get_option('marrison_master_api_token');
+        if (!empty($token)) {
+            $headers['x-marrison-token'] = $token;
+        }
+        return wp_remote_post(untrailingslashit($site_url) . '/wp-json/wp-agent-updater/v1/poll-now', [
+            'timeout' => 15,
+            'sslverify' => true,
+            'headers' => $headers
+        ]);
+    }
+
+    public function trigger_agent_restore_now($site_url, $filename) {
+        $headers = [];
+        $token = get_option('marrison_master_api_token');
+        if (!empty($token)) {
+            $headers['x-marrison-token'] = $token;
+            $ts = time();
+            $payload = json_encode(['filename' => $filename]);
+            $headers['x-marrison-timestamp'] = (string)$ts;
+            $headers['x-marrison-signature'] = hash_hmac('sha256', $payload . '|' . $ts, $token);
+            $headers['content-type'] = 'application/json';
+        }
+        $resp = wp_remote_post(untrailingslashit($site_url) . '/wp-json/wp-agent-updater/v1/backups/restore', [
+            'body' => isset($headers['content-type']) ? $payload : ['filename' => $filename],
+            'timeout' => 60,
+            'sslverify' => true,
+            'headers' => $headers
+        ]);
+        return $resp;
     }
     /**
      * Fetch private repository data (Plugins & Themes)
