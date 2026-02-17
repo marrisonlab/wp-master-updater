@@ -28,25 +28,39 @@ class Marrison_Master_Core {
         return $normalized;
     }
 
+    private function get_site_identity($url) {
+        $url = trim((string)$url);
+        if ($url === '') {
+            return '';
+        }
+        $url = untrailingslashit($url);
+        $parts = wp_parse_url($url);
+        if (!is_array($parts) || empty($parts['host'])) {
+            return $url;
+        }
+        $host = strtolower($parts['host']);
+        $path = isset($parts['path']) ? rtrim($parts['path'], '/') : '';
+        return $host . $path;
+    }
+
     public function update_client_data($data) {
         $clients = $this->get_clients();
         $raw_url = isset($data['site_url']) ? $data['site_url'] : '';
         $normalized_url = $this->normalize_site_url($raw_url);
+        $identity = $this->get_site_identity($raw_url);
 
         $ignored_plugins = [];
         $ignored_themes = [];
 
         foreach ($clients as $key => $client) {
-            if ($this->normalize_site_url($key) === $normalized_url) {
+            if ($this->get_site_identity($key) === $identity) {
                 if (isset($client['ignored_plugins']) && is_array($client['ignored_plugins'])) {
                     $ignored_plugins = array_values(array_unique(array_merge($ignored_plugins, $client['ignored_plugins'])));
                 }
                 if (isset($client['ignored_themes']) && is_array($client['ignored_themes'])) {
                     $ignored_themes = array_values(array_unique(array_merge($ignored_themes, $client['ignored_themes'])));
                 }
-                if ($key !== $normalized_url) {
-                    unset($clients[$key]);
-                }
+                unset($clients[$key]);
             }
         }
 
@@ -145,19 +159,12 @@ class Marrison_Master_Core {
 
     public function toggle_ignore_plugin($site_url, $plugin_path, $ignore) {
         $clients = $this->get_clients();
-        
-        // Normalize input to handle trailing slash mismatches for site key
-        $url_norm = untrailingslashit($site_url);
+        $identity = $this->get_site_identity($site_url);
         $found_key = false;
-        
-        if (isset($clients[$site_url])) {
-            $found_key = $site_url;
-        } else {
-            foreach (array_keys($clients) as $key) {
-                if (untrailingslashit($key) === $url_norm) {
-                    $found_key = $key;
-                    break;
-                }
+        foreach (array_keys($clients) as $key) {
+            if ($this->get_site_identity($key) === $identity) {
+                $found_key = $key;
+                break;
             }
         }
 
@@ -182,17 +189,12 @@ class Marrison_Master_Core {
 
     public function touch_client_last_sync($site_url) {
         $clients = $this->get_clients();
-        $url_norm = untrailingslashit($site_url);
+        $identity = $this->get_site_identity($site_url);
         $found_key = false;
-
-        if (isset($clients[$site_url])) {
-            $found_key = $site_url;
-        } else {
-            foreach (array_keys($clients) as $key) {
-                if (untrailingslashit($key) === $url_norm) {
-                    $found_key = $key;
-                    break;
-                }
+        foreach (array_keys($clients) as $key) {
+            if ($this->get_site_identity($key) === $identity) {
+                $found_key = $key;
+                break;
             }
         }
 
@@ -206,17 +208,12 @@ class Marrison_Master_Core {
 
     public function mark_client_pending_sync($site_url) {
         $clients = $this->get_clients();
-        $url_norm = untrailingslashit($site_url);
+        $identity = $this->get_site_identity($site_url);
         $found_key = false;
-
-        if (isset($clients[$site_url])) {
-            $found_key = $site_url;
-        } else {
-            foreach (array_keys($clients) as $key) {
-                if (untrailingslashit($key) === $url_norm) {
-                    $found_key = $key;
-                    break;
-                }
+        foreach (array_keys($clients) as $key) {
+            if ($this->get_site_identity($key) === $identity) {
+                $found_key = $key;
+                break;
             }
         }
 
@@ -230,25 +227,16 @@ class Marrison_Master_Core {
 
     public function mark_client_unreachable($site_url) {
         $clients = $this->get_clients();
-        
-        // Normalize input to handle trailing slash mismatches
-        $url_norm = untrailingslashit($site_url);
+        $identity = $this->get_site_identity($site_url);
         $found_key = false;
-        
-        // Try exact match first
-        if (isset($clients[$site_url])) {
-            $found_key = $site_url;
-        } else {
-            // Try normalized match
-            foreach (array_keys($clients) as $key) {
-                if (untrailingslashit($key) === $url_norm) {
-                    $found_key = $key;
-                    break;
-                }
+        foreach (array_keys($clients) as $key) {
+            if ($this->get_site_identity($key) === $identity) {
+                $found_key = $key;
+                break;
             }
         }
 
-        if ($found_key) {
+        if ($found_key !== false) {
             $clients[$found_key]['status'] = 'unreachable';
             // Do NOT update last_sync so we know it's stale
             update_option($this->option_name, $clients);
@@ -257,12 +245,18 @@ class Marrison_Master_Core {
 
     public function delete_client($site_url) {
         $clients = $this->get_clients();
-        if (isset($clients[$site_url])) {
-            unset($clients[$site_url]);
-            update_option($this->option_name, $clients);
-            return true;
+        $identity = $this->get_site_identity($site_url);
+        $deleted = false;
+        foreach ($clients as $key => $client) {
+            if ($this->get_site_identity($key) === $identity) {
+                unset($clients[$key]);
+                $deleted = true;
+            }
         }
-        return false;
+        if ($deleted) {
+            update_option($this->option_name, $clients);
+        }
+        return $deleted;
     }
 
     public function request_agent_push($site_url) {

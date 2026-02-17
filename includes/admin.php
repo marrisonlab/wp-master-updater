@@ -141,6 +141,70 @@ class Marrison_Master_Admin {
                 color: #fff !important;
                 text-decoration: underline !important;
             }
+            .mmu-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 9px 14px;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 13px;
+                border: 1px solid transparent;
+                transition: all 0.15s ease-in-out;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+                text-decoration: none;
+            }
+            .mmu-btn .dashicons {
+                font-size: 18px;
+                width: 18px;
+                height: 18px;
+                line-height: 1;
+                position: relative;
+                top: 1px;
+            }
+            .mmu-btn-primary {
+                background: #2271b1;
+                color: #fff !important;
+                border-color: #1b5f93;
+            }
+            .mmu-btn-primary:hover {
+                background: #1f64a0;
+            }
+            .mmu-btn-secondary {
+                background: #ffffff;
+                color: #1d2327 !important;
+                border-color: #c3c4c7;
+            }
+            .mmu-btn-secondary:hover {
+                background: #f7f7f7;
+            }
+            .mmu-btn-danger {
+                background: #dc3232;
+                color: #fff !important;
+                border-color: #b02424;
+            }
+            .mmu-btn-danger:hover {
+                background: #c12c2c;
+            }
+            .button-link-delete.mmu-btn-danger {
+                background: #dc3232 !important;
+                border-color: #b02424 !important;
+                color: #fff !important;
+            }
+            .button-link-delete.mmu-btn-danger .dashicons {
+                color: #fff !important;
+            }
+            .mmu-btn-small {
+                padding: 7px 10px;
+                font-size: 12px;
+                border-radius: 6px;
+                min-width: 32px;
+            }
+            .mmu-btn[disabled] {
+                opacity: 0.5;
+                cursor: not-allowed;
+                box-shadow: none;
+            }
         </style>
         <?php
     }
@@ -1285,15 +1349,19 @@ class Marrison_Master_Admin {
                         } elseif ($status === 'pending') {
                             echo '<span style="color:#2271b1; opacity:0.9;">Pending…</span>';
                         } else {
-                            echo $real_updates_count > 0
-                                ? '<span style="color:#dc3232">Updates: ' . $real_updates_count . '</span>'
-                                : '<span style="color:#46b450">Updated</span>';
+                            echo '<span class="mmu-indicators">';
+                            if ($real_updates_count > 0) {
+                                echo '<span class="mmu-badge">' . intval($real_updates_count) . '</span>';
+                            } else {
+                                echo '<span class="mmu-check"><span class="dashicons dashicons-yes"></span></span>';
+                            }
                             if ($p_update_count > $real_updates_count) {
-                                echo ' <span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>';
+                                echo '<span style="font-size:0.9em; opacity:0.7;">(' . ($p_update_count - $real_updates_count) . ' ignored)</span>';
                             }
                             if ($upstream_count > 0) {
-                                echo ' <span style="color:#ffb000; font-size:0.9em;">Upstream: ' . $upstream_count . '</span>';
+                                echo '<span style="color:#ffb000; font-size:0.9em;">Upstream: ' . $upstream_count . '</span>';
                             }
+                            echo '</span>';
                         }
                         ?>
                     </td>
@@ -1304,9 +1372,13 @@ class Marrison_Master_Admin {
                         } elseif ($status === 'pending') {
                             echo '<span style="color:#2271b1; opacity:0.9;">Pending…</span>';
                         } else {
-                            echo $t_update_count > 0
-                                ? '<span style="color:#dc3232">Updates: ' . $t_update_count . '</span>'
-                                : '<span style="color:#46b450">Updated</span>';
+                            echo '<span class="mmu-indicators">';
+                            if ($t_update_count > 0) {
+                                echo '<span class="mmu-badge">' . intval($t_update_count) . '</span>';
+                            } else {
+                                echo '<span class="mmu-check"><span class="dashicons dashicons-yes"></span></span>';
+                            }
+                            echo '</span>';
                         }
                         ?>
                     </td>
@@ -1314,13 +1386,13 @@ class Marrison_Master_Admin {
                     <td style="white-space: nowrap;">
                         <form class="mmu-actions-inline" onsubmit="return false;">
                             <input type="hidden" name="client_url" value="<?php echo esc_attr($url); ?>">
-                            <button type="button" value="sync" class="button button-secondary button-small marrison-action-btn" title="Request Push" aria-label="Request Push">
+                            <button type="button" value="sync" class="button button-secondary button-small mmu-btn mmu-btn-secondary mmu-btn-small marrison-action-btn" title="Request Push" aria-label="Request Push">
                                 <span class="dashicons dashicons-update"></span>
                             </button>
-                            <button type="button" value="update" class="button button-primary button-small marrison-action-btn" title="Request Update" aria-label="Request Update" <?php echo ($is_green || $is_yellow || $is_black) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>
+                            <button type="button" value="update" class="button button-primary button-small mmu-btn mmu-btn-primary mmu-btn-small marrison-action-btn" title="Request Update" aria-label="Request Update" <?php echo ($is_green || $is_yellow || $is_black) ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''; ?>>
                                 <span class="dashicons dashicons-migrate"></span>
                             </button>
-                            <button type="button" value="delete" class="button button-link-delete button-small marrison-action-btn" title="Delete" aria-label="Delete">
+                            <button type="button" value="delete" class="button button-link-delete button-small mmu-btn mmu-btn-danger mmu-btn-small marrison-action-btn" title="Delete" aria-label="Delete">
                                 <span class="dashicons dashicons-trash"></span>
                             </button>
                         </form>
@@ -1390,10 +1462,10 @@ class Marrison_Master_Admin {
                                                     <small style="opacity: 0.7;"><?php echo esc_html($b['type']); ?> - <?php echo esc_html($b['date']); ?></small>
                                                 </div>
                                                 <div style="display:inline;">
-                                                    <button type="button" value="restore" class="button button-small marrison-action-btn" 
+                                                    <button type="button" value="restore" class="button button-small mmu-btn mmu-btn-secondary mmu-btn-small marrison-action-btn" 
                                                             data-client-url="<?php echo esc_attr($url); ?>" 
                                                             data-backup-file="<?php echo esc_attr($b['filename']); ?>" 
-                                                            style="background: #fff; color: #2271b1; border: none;">Restore</button>
+                                                            >Restore</button>
                                                 </div>
                                             </li>
                                         <?php endforeach; ?>
@@ -1597,11 +1669,40 @@ class Marrison_Master_Admin {
                 margin: 0 0 15px 0;
                 font-weight: 600;
             }
+            .mmu-badge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 26px;
+                height: 26px;
+                border-radius: 50%;
+                font-size: 12px;
+                font-weight: 700;
+                background: #dc3232;
+                color: #fff;
+            }
+            .mmu-check {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                color: #46b450;
+                font-weight: 600;
+            }
+            .mmu-check .dashicons {
+                font-size: 18px;
+                width: 18px;
+                height: 18px;
+            }
+            .mmu-indicators {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
 
             .mmu-led {
                 display: inline-block;
-                width: 16px;
-                height: 16px;
+                width: 22px;
+                height: 22px;
                 border-radius: 50%;
                 box-shadow: 0 0 8px currentColor;
                 transition: all 0.3s ease;
@@ -1611,10 +1712,10 @@ class Marrison_Master_Admin {
             .mmu-led::after {
                 content: '';
                 position: absolute;
-                top: 3px;
-                left: 3px;
-                width: 10px;
-                height: 10px;
+                top: 4px;
+                left: 4px;
+                width: 14px;
+                height: 14px;
                 border-radius: 50%;
                 background: currentColor;
                 opacity: 0.8;
@@ -1630,8 +1731,6 @@ class Marrison_Master_Admin {
                 align-items: center;
             }
             .mmu-actions-inline .button {
-                padding: 0 4px;
-                height: 28px;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -1684,12 +1783,31 @@ class Marrison_Master_Admin {
                     }
                 }
             ?>
-            <div class="tablenav top" style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                <div class="actions">
-                    <button id="marrison-bulk-sync" class="button button-primary">Mass Sync</button>
-                    <button id="marrison-bulk-update" class="button button-secondary" style="margin: 0 5px;">Mass Update</button>
-                    <button id="marrison-clear-cache" class="button button-secondary">Clear Master Cache</button>
-                    <button id="marrison-refresh-table" class="button button-secondary">Refresh</button>
+            <?php $strategy = get_option('marrison_call_strategy', 'queue_poll_now'); ?>
+            <?php
+                $bar_bg = '#f0f0f0';
+                $bar_border = '#c3c4c7';
+                $bar_text = '#1d2327';
+                $strategy_label = 'Queue and run now (poll-now)';
+                if ($strategy === 'push') {
+                    $bar_bg = '#e6f7ee';
+                    $bar_border = '#46b450';
+                    $strategy_label = 'Immediate push';
+                } elseif ($strategy === 'queue_only') {
+                    $bar_bg = '#fef4e5';
+                    $bar_border = '#dba617';
+                    $strategy_label = 'Queue only (WP-Cron)';
+                }
+            ?>
+            <div class="tablenav top" style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px; padding: 8px 10px; border: 1px solid <?php echo esc_attr($bar_border); ?>; background: <?php echo esc_attr($bar_bg); ?>; border-radius: 4px;">
+                <div class="actions" style="display:flex; align-items:center; gap:8px;">
+                    <button id="marrison-bulk-sync" class="button button-primary mmu-btn mmu-btn-primary"><span class="dashicons dashicons-update"></span>Mass Sync</button>
+                    <button id="marrison-bulk-update" class="button button-secondary mmu-btn mmu-btn-secondary" style="margin: 0 5px;"><span class="dashicons dashicons-migrate"></span>Mass Update</button>
+                    <button id="marrison-clear-cache" class="button button-secondary mmu-btn mmu-btn-secondary"><span class="dashicons dashicons-trash"></span>Clear Master Cache</button>
+                    <button id="marrison-refresh-table" class="button button-secondary mmu-btn mmu-btn-secondary"><span class="dashicons dashicons-image-rotate"></span>Refresh</button>
+                </div>
+                <div class="marrison-strategy-label" style="margin-left:10px; font-size:12px; font-weight:600; color: <?php echo esc_attr($bar_text); ?>;">
+                    Call Strategy: <?php echo esc_html($strategy_label); ?>
                 </div>
                 <div id="marrison-progress-wrap" style="display:none; flex: 1; max-width: 400px; border: 1px solid #c3c4c7; height: 24px; background: #fff; position: relative; border-radius: 4px; overflow: hidden;">
                      <div id="marrison-progress-bar" style="width: 0%; height: 100%; background: #46b450; transition: width 0.3s ease;"></div>
