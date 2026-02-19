@@ -2361,19 +2361,10 @@ class Marrison_Master_Admin {
                     e.preventDefault();
                     var btn = $(this);
                     btn.prop('disabled', true).text('Refreshing...');
-
-                    $.post(ajaxurl, {
-                        action: 'marrison_client_action',
-                        nonce: marrison_vars.nonce,
-                        cmd: 'noop'
-                    }, function(response) {
-                        if (response && response.success && response.data && response.data.html) {
-                            $('#marrison-clients-body').html(response.data.html);
-                            bindEvents();
-                        }
-                    }).always(function() {
+                    refreshClientsTable();
+                    setTimeout(function() {
                         btn.prop('disabled', false).text('Refresh');
-                    });
+                    }, 1000);
                 });
 
                 setInterval(function() {
