@@ -1336,7 +1336,7 @@ class Marrison_Master_Admin {
                     $is_yellow = ($led_color === '#f0c330');
                     $is_black = ($led_color === '#000000');
                 ?>
-                <tr class="mmu-main-row" data-key="<?php echo esc_attr($row_key); ?>" style="cursor: pointer;">
+                <tr class="mmu-main-row" data-key="<?php echo esc_attr($row_key); ?>" data-status="<?php echo esc_attr($status); ?>" style="cursor: pointer;">
                     <td style="text-align: center;">
                         <span class="mmu-led" style="color: <?php echo $led_color; ?>;" title="<?php echo esc_attr($led_title); ?>"></span>
                     </td>
@@ -1631,6 +1631,39 @@ class Marrison_Master_Admin {
                 background-color: #fafafa !important;
                 border-left-color: var(--primary-color);
             }
+
+            .mmu-main-row.mmu-row-loading {
+                background-image: linear-gradient(
+                    90deg,
+                    rgba(70,180,80,0.10) 0%,
+                    rgba(70,180,80,0.40) 50%,
+                    rgba(70,180,80,0.10) 100%
+                );
+                background-size: 200% 100%;
+                animation: mmu-row-loading 1.2s linear infinite;
+            }
+
+            .mmu-main-row.mmu-row-fallback {
+                background-image: repeating-linear-gradient(
+                    -45deg,
+                    rgba(240,195,48,0.10) 0,
+                    rgba(240,195,48,0.10) 8px,
+                    rgba(240,195,48,0.45) 8px,
+                    rgba(240,195,48,0.45) 16px
+                );
+                background-size: 200% 100%;
+                animation: mmu-row-indeterminate 0.9s linear infinite;
+            }
+
+            @keyframes mmu-row-loading {
+                0%   { background-position: 200% 0; }
+                100% { background-position: -200% 0; }
+            }
+
+            @keyframes mmu-row-indeterminate {
+                0%   { background-position: 0 0; }
+                100% { background-position: 32px 0; }
+            }
             
             .mmu-main-row td {
                 padding: 14px 12px;
@@ -1878,10 +1911,6 @@ class Marrison_Master_Admin {
                 <div class="marrison-strategy-label" style="margin-left:10px; padding: 6px 12px; font-size:12px; font-weight:600; color: #000; background: <?php echo esc_attr($bar_bg); ?>; border: 1px solid <?php echo esc_attr($bar_border); ?>; border-radius: 3px;">
                     Call Strategy: <?php echo esc_html($strategy_label); ?>
                 </div>
-                <div id="marrison-progress-wrap" style="display:none; flex: 1; max-width: 400px; border: 1px solid #c3c4c7; height: 24px; background: #fff; position: relative; border-radius: 4px; overflow: hidden;">
-                     <div id="marrison-progress-bar" style="width: 0%; height: 100%; background: #46b450; transition: width 0.3s ease;"></div>
-                     <div id="marrison-progress-text" style="position: absolute; top: 0; left: 0; width: 100%; text-align: center; line-height: 24px; font-size: 12px; font-weight: 600; color: #1d2327; text-shadow: 0 0 2px #fff;">0%</div>
-                </div>
                 <div id="marrison-bulk-status" style="font-weight: 600;"></div>
                 <div class="marrison-counters" style="margin-left:auto; display:flex; align-items:center; gap:10px;">
                     <?php if (intval($counts['green']) > 0): ?>
@@ -1932,51 +1961,86 @@ class Marrison_Master_Admin {
         };
         
             function updateProgress(current, total, message, callback) {
-                var $ = jQuery;
-                var wrap = $('#marrison-progress-wrap');
-                var bar = $('#marrison-progress-bar');
-                var text = $('#marrison-progress-text');
-                var status = $('#marrison-bulk-status');
-
-                if (wrap.length === 0 || bar.length === 0 || text.length === 0 || status.length === 0) {
-                    console.error('Progress bar elements not found');
-                    return;
-                }
-
-                if (total <= 0) {
-                    wrap.hide();
-                    bar.css('width', '0%');
-                    text.text('0%');
-                    status.text('');
-                    return;
-                }
-
-                if (current > total) current = total;
-                if (current < 0) current = 0;
-
-                var percent = Math.round((current / total) * 100);
-                
-                wrap.show();
-                bar.css('width', percent + '%');
-                text.text(percent + '%');
-                if (message) status.text(message);
-                
-                if (percent >= 100) {
-                    setTimeout(function() {
-                        wrap.fadeOut(400, function() {
-                            if (callback && typeof callback === 'function') {
-                                callback();
-                            }
-                            status.text('');
-                            bar.css('width', '0%');
-                            text.text('0%');
-                        });
-                    }, 3000);
+                if (typeof callback === 'function' && total > 0 && current >= total) {
+                    callback();
                 }
             }
             window.marrisonUpdateProgress = updateProgress;
 
-            function refreshClientsTable() {
+            function applyRowLoadingState() {
+                var $ = jQuery;
+                var map = window.marrisonLoadingClients || {};
+                $('.mmu-main-row').each(function() {
+                    var row = $(this);
+                    var urlInput = row.find('input[name="client_url"]');
+                    var url = urlInput.length ? urlInput.val() : '';
+                    if (url && map[url]) {
+                        row.addClass('mmu-row-loading');
+                        if (map[url] === 'fallback') {
+                            row.addClass('mmu-row-fallback');
+                        } else {
+                            row.removeClass('mmu-row-fallback');
+                        }
+                    } else {
+                        row.removeClass('mmu-row-loading mmu-row-fallback');
+                    }
+                });
+            }
+
+            function afterTableRefresh() {
+                var $ = jQuery;
+                var map = window.marrisonLoadingClients || {};
+                var remaining = {};
+                var hasRemaining = false;
+                for (var clientUrl in map) {
+                    if (!Object.prototype.hasOwnProperty.call(map, clientUrl)) continue;
+                    var row = $('.mmu-main-row').filter(function() {
+                        var urlInput = jQuery(this).find('input[name="client_url"]');
+                        return urlInput.length && urlInput.val() === clientUrl;
+                    }).first();
+                    if (!row.length) {
+                        continue;
+                    }
+                    var status = row.data('status');
+                    if (status === 'pending') {
+                        remaining[clientUrl] = 'fallback';
+                        hasRemaining = true;
+                    } else {
+                        row.removeClass('mmu-row-loading mmu-row-fallback');
+                    }
+                }
+                window.marrisonLoadingClients = remaining;
+                applyRowLoadingState();
+                if (!hasRemaining && window.marrisonRowPollInterval) {
+                    clearInterval(window.marrisonRowPollInterval);
+                    window.marrisonRowPollInterval = null;
+                }
+            }
+
+            function ensureRowPolling() {
+                if (window.marrisonRowPollInterval) return;
+                if (!window.marrisonLoadingClients || Object.keys(window.marrisonLoadingClients).length === 0) return;
+                window.marrisonRowPollInterval = setInterval(function() {
+                    if (document.hidden) return;
+                    if (!window.marrisonLoadingClients || Object.keys(window.marrisonLoadingClients).length === 0) {
+                        clearInterval(window.marrisonRowPollInterval);
+                        window.marrisonRowPollInterval = null;
+                        return;
+                    }
+                    refreshClientsTable(true);
+                }, 3000);
+            }
+
+            function setRowLoading(clientUrl, mode) {
+                if (!clientUrl) return;
+                if (!mode) mode = 'normal';
+                if (!window.marrisonLoadingClients) window.marrisonLoadingClients = {};
+                window.marrisonLoadingClients[clientUrl] = mode;
+                applyRowLoadingState();
+                ensureRowPolling();
+            }
+
+            function refreshClientsTable(fromPolling) {
                 if (window.isBulkRunning) return;
                 var $ = jQuery;
                 var tbody = $('#marrison-clients-body');
@@ -1986,14 +2050,43 @@ class Marrison_Master_Admin {
                     cmd: 'noop',
                     nonce: marrison_vars.nonce
                 }, function(response) {
-                        if (response && response.success && response.data) {
-                            if (response.data.html) {
-                                tbody.html(response.data.html);
-                                try { bindEvents(); } catch(e) {}
+                    if (!response || !response.success || !response.data) return;
+
+                    if (response.data.counters) {
+                        $('.marrison-counters').html(response.data.counters);
+                    }
+
+                    if (response.data.html) {
+                        if (fromPolling) {
+                            var tmp = $('<tbody>' + response.data.html + '</tbody>');
+                            var map = window.marrisonLoadingClients || {};
+                            for (var clientUrl in map) {
+                                if (!Object.prototype.hasOwnProperty.call(map, clientUrl)) continue;
+                                var newMain = tmp.find('.mmu-main-row').filter(function() {
+                                    var u = $(this).find('input[name="client_url"]');
+                                    return u.length && u.val() === clientUrl;
+                                }).first();
+                                if (!newMain.length) continue;
+                                var status = newMain.data('status');
+                                $('.mmu-main-row').each(function() {
+                                    var currentUrlInput = $(this).find('input[name="client_url"]');
+                                    var currentUrl = currentUrlInput.length ? currentUrlInput.val() : '';
+                                    if (currentUrl === clientUrl) {
+                                        if (typeof status !== 'undefined') {
+                                            $(this).attr('data-status', status);
+                                        }
+                                    }
+                                });
                             }
-                            if (response.data.counters) {
-                                $('.marrison-counters').html(response.data.counters);
-                            }
+                        } else {
+                            tbody.html(response.data.html);
+                            try { bindEvents(); } catch(e) {}
+                        }
+                    }
+
+                    applyRowLoadingState();
+                    if (fromPolling) {
+                        afterTableRefresh();
                     }
                 });
             }
@@ -2035,10 +2128,9 @@ class Marrison_Master_Admin {
                 } catch(e) { console.error('Name extraction failed', e); }
 
                 var progressIntervalId = null;
-                var progressMessage = cmd + ' on ' + clientName + ': In progress...';
                 if(cmd === 'sync' || cmd === 'update' || cmd === 'restore') {
                     btn.addClass('loading').attr('aria-busy', 'true');
-                    window.marrisonUpdateProgress(10, 100, progressMessage);
+                    setRowLoading(clientUrl, 'normal');
                 }
 
                 $.post(ajaxurl, {
@@ -2054,6 +2146,9 @@ class Marrison_Master_Admin {
                         }
                         if (response && response.success && response.data && response.data.message) {
                             $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>' + response.data.message + '</p></div>');
+                            if (response.data.message.indexOf('fallback') !== -1) {
+                                setRowLoading(clientUrl, 'fallback');
+                            }
                         } else if (response && !response.success) {
                             $('#marrison-notices').html('<div class="notice notice-error is-dismissible"><p>' + (response.data ? response.data.message : 'Error') + '</p></div>');
                         }
@@ -2074,8 +2169,6 @@ class Marrison_Master_Admin {
                         var isSuccess = (textStatus === 'success');
                         if (isSuccess && data && typeof data === 'object' && data.success === false) isSuccess = false;
 
-                        var statusMsg = isSuccess ? 'Completed' : 'Failed';
-                        
                         var onCompletionCallback = null;
                         if (cmd === 'restore' && isSuccess) {
                             onCompletionCallback = function() {
@@ -2096,11 +2189,6 @@ class Marrison_Master_Admin {
                                 }
                             };
                         }
-                        
-                        window.marrisonUpdateProgress(100, 100, cmd + ' su ' + clientName + ': ' + statusMsg, onCompletionCallback);
-
-                    } else {
-                        window.marrisonUpdateProgress(0, 0);
                     }
 
                     try {
@@ -2220,8 +2308,6 @@ class Marrison_Master_Admin {
                     var successCount = 0;
                     var errorCount = 0;
                     
-                    updateProgress(0, total, 'Starting mass sync...');
-                    
                     function syncNext() {
                         if (current >= total) {
                             refreshClientsTable();
@@ -2233,7 +2319,7 @@ class Marrison_Master_Admin {
                         }
 
                         var clientUrl = clients[current];
-                        updateProgress(current, total, 'Sync in progress: ' + (current + 1) + '/' + total);
+                        setRowLoading(clientUrl, 'normal');
                         
                         $.post(ajaxurl, {
                             action: 'marrison_client_action',
@@ -2293,8 +2379,6 @@ class Marrison_Master_Admin {
                     var successCount = 0;
                     var errorCount = 0;
                     
-                    updateProgress(0, total, 'Starting mass update...');
-                    
                     function updateNext() {
                         if (current >= total) {
                             refreshClientsTable();
@@ -2306,7 +2390,7 @@ class Marrison_Master_Admin {
                         }
 
                         var clientUrl = clients[current];
-                        updateProgress(current, total, 'Update in progress: ' + (current + 1) + '/' + total);
+                        setRowLoading(clientUrl, 'normal');
                         
                         $.post(ajaxurl, {
                             action: 'marrison_client_action',
@@ -2314,15 +2398,18 @@ class Marrison_Master_Admin {
                             client_url: clientUrl,
                             bulk_mode: 'true',
                             nonce: marrison_vars.nonce
-                    }, function(response) {
-                        if (response.success) {
-                            successCount++;
-                            if (response.data && response.data.counters) {
-                                $('.marrison-counters').html(response.data.counters);
+                        }, function(response) {
+                            if (response.success) {
+                                successCount++;
+                                if (response.data && response.data.counters) {
+                                    $('.marrison-counters').html(response.data.counters);
+                                }
+                                if (response.data && response.data.message && response.data.message.indexOf('fallback') !== -1) {
+                                    setRowLoading(clientUrl, 'fallback');
+                                }
+                            } else {
+                                errorCount++;
                             }
-                        } else {
-                            errorCount++;
-                        }
                         }).fail(function() {
                             errorCount++;
                         }).always(function() {
