@@ -1089,7 +1089,6 @@ class Marrison_Master_Admin {
         delete_site_transient('update_plugins');
         delete_site_transient('update_themes');
 
-        // Reset Client Data (wipe plugin/theme info to force full re-sync, but keep exclusions)
         $clients = get_option('marrison_connected_clients', []);
         foreach ($clients as &$client) {
              $ignored_plugins = $client['ignored_plugins'] ?? [];
@@ -1104,6 +1103,9 @@ class Marrison_Master_Admin {
              ];
         }
         update_option('marrison_connected_clients', $clients);
+        delete_option('marrison_push_requests');
+        delete_option('marrison_update_requests');
+        delete_option('marrison_restore_requests');
 
         $html = $this->render_clients_table_body($clients);
 
@@ -1204,9 +1206,26 @@ class Marrison_Master_Admin {
             $msg = 'Client removed';
         } elseif ($action === 'noop') {
             $msg = 'Table updated';
+        } elseif ($action === 'bulk_prepare_pending') {
+            $urls_raw = isset($_POST['client_urls']) ? $_POST['client_urls'] : '';
+            $urls = [];
+            if (is_array($urls_raw)) {
+                $urls = $urls_raw;
+            } elseif (is_string($urls_raw) && $urls_raw !== '') {
+                $pieces = explode(',', $urls_raw);
+                foreach ($pieces as $u) {
+                    $u = trim($u);
+                    if ($u !== '') $urls[] = $u;
+                }
+            }
+            foreach ($urls as $u) {
+                $this->core->mark_client_pending_sync($u);
+            }
+            $msg = 'Bulk pending prepared';
         }
 
-        $clients = $this->core->get_clients();
+        $clients = $this->core->ensure_pending_flags();
+
         $html = $this->render_clients_table_body($clients);
         
         // Build counters markup for dynamic refresh
@@ -2182,7 +2201,13 @@ class Marrison_Master_Admin {
 
                     if (!confirm('Start sync on all ' + clients.length + ' clients?')) return;
 
-                    // Visual: mark all selected clients as pending immediately (no più grigi)
+                    $.post(ajaxurl, {
+                        action: 'marrison_client_action',
+                        cmd: 'bulk_prepare_pending',
+                        client_urls: clients.join(','),
+                        nonce: marrison_vars.nonce
+                    });
+
                     clients.forEach(function(clientUrl) {
                         var row = $('#marrison-clients-body input[name="client_url"][value="' + clientUrl.replace(/"/g, '\\"') + '"]').closest('.mmu-main-row');
                         if (!row.length) return;
@@ -2369,7 +2394,6 @@ class Marrison_Master_Admin {
                 });
 
                 setInterval(function() {
-                    if (document.hidden) return;
                     var needsRefresh = false;
                     $('.mmu-main-row').each(function() {
                         var status = $(this).data('status');

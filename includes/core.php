@@ -225,6 +225,49 @@ class Marrison_Master_Core {
         update_option($this->option_name, $clients);
     }
 
+    public function ensure_pending_flags() {
+        $clients = $this->get_clients();
+        if (empty($clients)) {
+            return $clients;
+        }
+
+        $push = get_option('marrison_push_requests', []);
+        $update = get_option('marrison_update_requests', []);
+        $restore = get_option('marrison_restore_requests', []);
+
+        $pending_identities = [];
+        foreach (array_keys((array)$push) as $k) {
+            $pending_identities[$this->get_site_identity($k)] = true;
+        }
+        foreach (array_keys((array)$update) as $k) {
+            $pending_identities[$this->get_site_identity($k)] = true;
+        }
+        foreach (array_keys((array)$restore) as $k) {
+            $pending_identities[$this->get_site_identity($k)] = true;
+        }
+
+        $changed = false;
+        foreach ($clients as $key => &$client) {
+            $status = $client['status'] ?? 'active';
+            if ($status !== 'stale') {
+                continue;
+            }
+            $identity = $this->get_site_identity($key);
+            $has_pending = isset($pending_identities[$identity]);
+            if ($has_pending) {
+                $client['status'] = 'pending';
+                $changed = true;
+            }
+        }
+        unset($client);
+
+        if ($changed) {
+            update_option($this->option_name, $clients);
+        }
+
+        return $clients;
+    }
+
     public function mark_client_unreachable($site_url) {
         $clients = $this->get_clients();
         $identity = $this->get_site_identity($site_url);
