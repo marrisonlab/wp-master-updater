@@ -1259,7 +1259,7 @@ class Marrison_Master_Admin {
             <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#f0c330;"></span><span><?php echo intval($counts['yellow']); ?></span></div>
         <?php endif; ?>
         <?php if (intval($counts['blue']) > 0): ?>
-            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#2271b1;"></span><span><?php echo intval($counts['blue']); ?></span></div>
+            <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#9651d2;"></span><span><?php echo intval($counts['blue']); ?></span></div>
         <?php endif; ?>
         <?php if (intval($counts['grey']) > 0): ?>
             <div style="display:flex; align-items:center; gap:6px;"><span class="mmu-led" style="color:#888888;"></span><span><?php echo intval($counts['grey']); ?></span></div>
@@ -1307,38 +1307,51 @@ class Marrison_Master_Admin {
                     $upstream_count = count($data['plugins_upstream_newer'] ?? []);
                     $status = $data['status'] ?? 'active';
                     
-                    // LED Logic
-                    $led_color = '#46b450'; // Green
+                    // LED Logic (no progress bar, all info via LED)
+                    $led_color = '#46b450'; // Green (updated)
                     $led_title = 'Everything updated';
+                    $led_state = 'ok';
                     
                     if ($status === 'stale') {
-                        $led_color = '#888888'; // Grey
-                        $led_title = 'Cache cleared, awaiting next sync';
+                        $led_color = '#888888'; // Grey - no data
+                        $led_title = 'No data yet, waiting for first sync';
+                        $led_state = 'stale';
                     } elseif ($status === 'pending') {
-                        $led_color = '#2271b1'; // Blue
-                        $led_title = 'Sync requested, waiting for Agent';
+                        if ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
+                            $led_color = '#fd5ec0'; // Pink - updating
+                            $led_title = 'Update in progress';
+                            $led_state = 'updating';
+                        } else {
+                            $led_color = '#9651d2'; // Purple - pending
+                            $led_title = 'Pending, waiting for Agent';
+                            $led_state = 'pending';
+                        }
                     } elseif ($status === 'unreachable') {
-                        $led_color = '#000000'; // Black
+                        $led_color = '#000000'; // Black - unreachable
                         $led_title = 'Agent unreachable';
+                        $led_state = 'unreachable';
                     } elseif ($real_updates_count > 0 || $t_update_count > 0 || $trans_update) {
-                        $led_color = '#dc3232'; // Red
+                        $led_color = '#dc3232'; // Red - updates available
                         $led_title = 'Updates available';
+                        $led_state = 'needs_update';
                     } elseif ($upstream_count > 0) {
-                        $led_color = '#ffb000'; // Amber
+                        $led_color = '#ffb000'; // Amber - upstream newer
                         $led_title = 'Upstream newer than private (' . $upstream_count . ')';
+                        $led_state = 'amber';
                     } elseif ($inactive_count > 0) {
-                        $led_color = '#f0c330'; // Yellow
+                        $led_color = '#f0c330'; // Yellow - inactive plugins
                         $led_title = 'There are ' . $inactive_count . ' inactive plugins';
+                        $led_state = 'inactive';
                     }
                     
                     $row_key = md5($url);
-                    $is_green = ($led_color === '#46b450');
-                    $is_yellow = ($led_color === '#f0c330');
-                    $is_black = ($led_color === '#000000');
+                    $is_green = ($led_state === 'ok');
+                    $is_yellow = ($led_state === 'inactive');
+                    $is_black = ($led_state === 'unreachable');
                 ?>
                 <tr class="mmu-main-row" data-key="<?php echo esc_attr($row_key); ?>" data-status="<?php echo esc_attr($status); ?>" style="cursor: pointer;">
                     <td style="text-align: center;">
-                        <span class="mmu-led" style="color: <?php echo $led_color; ?>;" title="<?php echo esc_attr($led_title); ?>"></span>
+                        <span class="mmu-led mmu-led-state-<?php echo esc_attr($led_state); ?>" style="color: <?php echo $led_color; ?>;" title="<?php echo esc_attr($led_title); ?>"></span>
                     </td>
                     <td><strong style="display: block; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo esc_attr($data['site_name']); ?>"><?php echo esc_html($data['site_name']); ?></strong></td>
                     <td><a href="<?php echo esc_url($url); ?>" target="_blank"><?php echo esc_html($url); ?></a></td>
@@ -1631,39 +1644,6 @@ class Marrison_Master_Admin {
                 background-color: #fafafa !important;
                 border-left-color: var(--primary-color);
             }
-
-            .mmu-main-row.mmu-row-loading {
-                background-image: linear-gradient(
-                    90deg,
-                    rgba(70,180,80,0.10) 0%,
-                    rgba(70,180,80,0.40) 50%,
-                    rgba(70,180,80,0.10) 100%
-                );
-                background-size: 200% 100%;
-                animation: mmu-row-loading 1.2s linear infinite;
-            }
-
-            .mmu-main-row.mmu-row-fallback {
-                background-image: repeating-linear-gradient(
-                    -45deg,
-                    rgba(240,195,48,0.10) 0,
-                    rgba(240,195,48,0.10) 8px,
-                    rgba(240,195,48,0.45) 8px,
-                    rgba(240,195,48,0.45) 16px
-                );
-                background-size: 200% 100%;
-                animation: mmu-row-indeterminate 0.9s linear infinite;
-            }
-
-            @keyframes mmu-row-loading {
-                0%   { background-position: 200% 0; }
-                100% { background-position: -200% 0; }
-            }
-
-            @keyframes mmu-row-indeterminate {
-                0%   { background-position: 0 0; }
-                100% { background-position: 32px 0; }
-            }
             
             .mmu-main-row td {
                 padding: 14px 12px;
@@ -1760,6 +1740,18 @@ class Marrison_Master_Admin {
                 border-radius: 50%;
                 background: currentColor;
                 opacity: 0.9;
+            }
+
+            .mmu-led-state-pending,
+            .mmu-led-state-updating,
+            .mmu-led-state-needs_update {
+                animation: mmu-led-pulse 1.4s ease-in-out infinite;
+            }
+
+            @keyframes mmu-led-pulse {
+                0%   { transform: scale(1); box-shadow: 0 0 4px currentColor; }
+                50%  { transform: scale(1.12); box-shadow: 0 0 10px currentColor; }
+                100% { transform: scale(1); box-shadow: 0 0 4px currentColor; }
             }
             
             .button.loading {
@@ -1967,81 +1959,7 @@ class Marrison_Master_Admin {
             }
             window.marrisonUpdateProgress = updateProgress;
 
-            function applyRowLoadingState() {
-                var $ = jQuery;
-                var map = window.marrisonLoadingClients || {};
-                $('.mmu-main-row').each(function() {
-                    var row = $(this);
-                    var urlInput = row.find('input[name="client_url"]');
-                    var url = urlInput.length ? urlInput.val() : '';
-                    if (url && map[url]) {
-                        row.addClass('mmu-row-loading');
-                        if (map[url] === 'fallback') {
-                            row.addClass('mmu-row-fallback');
-                        } else {
-                            row.removeClass('mmu-row-fallback');
-                        }
-                    } else {
-                        row.removeClass('mmu-row-loading mmu-row-fallback');
-                    }
-                });
-            }
-
-            function afterTableRefresh() {
-                var $ = jQuery;
-                var map = window.marrisonLoadingClients || {};
-                var remaining = {};
-                var hasRemaining = false;
-                for (var clientUrl in map) {
-                    if (!Object.prototype.hasOwnProperty.call(map, clientUrl)) continue;
-                    var row = $('.mmu-main-row').filter(function() {
-                        var urlInput = jQuery(this).find('input[name="client_url"]');
-                        return urlInput.length && urlInput.val() === clientUrl;
-                    }).first();
-                    if (!row.length) {
-                        continue;
-                    }
-                    var status = row.data('status');
-                    if (status === 'pending') {
-                        remaining[clientUrl] = 'fallback';
-                        hasRemaining = true;
-                    } else {
-                        row.removeClass('mmu-row-loading mmu-row-fallback');
-                    }
-                }
-                window.marrisonLoadingClients = remaining;
-                applyRowLoadingState();
-                if (!hasRemaining && window.marrisonRowPollInterval) {
-                    clearInterval(window.marrisonRowPollInterval);
-                    window.marrisonRowPollInterval = null;
-                }
-            }
-
-            function ensureRowPolling() {
-                if (window.marrisonRowPollInterval) return;
-                if (!window.marrisonLoadingClients || Object.keys(window.marrisonLoadingClients).length === 0) return;
-                window.marrisonRowPollInterval = setInterval(function() {
-                    if (document.hidden) return;
-                    if (!window.marrisonLoadingClients || Object.keys(window.marrisonLoadingClients).length === 0) {
-                        clearInterval(window.marrisonRowPollInterval);
-                        window.marrisonRowPollInterval = null;
-                        return;
-                    }
-                    refreshClientsTable(true);
-                }, 3000);
-            }
-
-            function setRowLoading(clientUrl, mode) {
-                if (!clientUrl) return;
-                if (!mode) mode = 'normal';
-                if (!window.marrisonLoadingClients) window.marrisonLoadingClients = {};
-                window.marrisonLoadingClients[clientUrl] = mode;
-                applyRowLoadingState();
-                ensureRowPolling();
-            }
-
             function refreshClientsTable(fromPolling) {
-                if (window.isBulkRunning) return;
                 var $ = jQuery;
                 var tbody = $('#marrison-clients-body');
                 if (!tbody.length) return;
@@ -2057,36 +1975,8 @@ class Marrison_Master_Admin {
                     }
 
                     if (response.data.html) {
-                        if (fromPolling) {
-                            var tmp = $('<tbody>' + response.data.html + '</tbody>');
-                            var map = window.marrisonLoadingClients || {};
-                            for (var clientUrl in map) {
-                                if (!Object.prototype.hasOwnProperty.call(map, clientUrl)) continue;
-                                var newMain = tmp.find('.mmu-main-row').filter(function() {
-                                    var u = $(this).find('input[name="client_url"]');
-                                    return u.length && u.val() === clientUrl;
-                                }).first();
-                                if (!newMain.length) continue;
-                                var status = newMain.data('status');
-                                $('.mmu-main-row').each(function() {
-                                    var currentUrlInput = $(this).find('input[name="client_url"]');
-                                    var currentUrl = currentUrlInput.length ? currentUrlInput.val() : '';
-                                    if (currentUrl === clientUrl) {
-                                        if (typeof status !== 'undefined') {
-                                            $(this).attr('data-status', status);
-                                        }
-                                    }
-                                });
-                            }
-                        } else {
-                            tbody.html(response.data.html);
-                            try { bindEvents(); } catch(e) {}
-                        }
-                    }
-
-                    applyRowLoadingState();
-                    if (fromPolling) {
-                        afterTableRefresh();
+                        tbody.html(response.data.html);
+                        try { bindEvents(); } catch(e) {}
                     }
                 });
             }
@@ -2130,7 +2020,6 @@ class Marrison_Master_Admin {
                 var progressIntervalId = null;
                 if(cmd === 'sync' || cmd === 'update' || cmd === 'restore') {
                     btn.addClass('loading').attr('aria-busy', 'true');
-                    setRowLoading(clientUrl, 'normal');
                 }
 
                 $.post(ajaxurl, {
@@ -2144,11 +2033,8 @@ class Marrison_Master_Admin {
                         if (response && response.success && response.data && response.data.html) {
                             $('#marrison-clients-body').html(response.data.html);
                         }
-                        if (response && response.success && response.data && response.data.message) {
-                            $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>' + response.data.message + '</p></div>');
-                            if (response.data.message.indexOf('fallback') !== -1) {
-                                setRowLoading(clientUrl, 'fallback');
-                            }
+                            if (response && response.success && response.data && response.data.message) {
+                                $('#marrison-notices').html('<div class="notice notice-success is-dismissible"><p>' + response.data.message + '</p></div>');
                         } else if (response && !response.success) {
                             $('#marrison-notices').html('<div class="notice notice-error is-dismissible"><p>' + (response.data ? response.data.message : 'Error') + '</p></div>');
                         }
@@ -2296,6 +2182,24 @@ class Marrison_Master_Admin {
 
                     if (!confirm('Start sync on all ' + clients.length + ' clients?')) return;
 
+                    // Visual: mark all selected clients as pending immediately (no più grigi)
+                    clients.forEach(function(clientUrl) {
+                        var row = $('#marrison-clients-body input[name="client_url"][value="' + clientUrl.replace(/"/g, '\\"') + '"]').closest('.mmu-main-row');
+                        if (!row.length) return;
+                        row.attr('data-status', 'pending');
+                        var led = row.find('.mmu-led').first();
+                        if (led.length) {
+                            led.removeClass(function(i, c) {
+                                return (c.match(/mmu-led-state-\S+/g) || []).join(' ');
+                            });
+                            led.addClass('mmu-led-state-pending');
+                            led.css('color', '#9651d2');
+                            led.attr('title', 'Pending, waiting for Agent');
+                        }
+                        row.find('td:nth-child(4)').html('<span style="color:#2271b1; opacity:0.9;">Pending…</span>');
+                        row.find('td:nth-child(5)').html('<span style="color:#2271b1; opacity:0.9;">Pending…</span>');
+                    });
+
                     window.isBulkRunning = true;
                     var bulkSyncBtn = $(this);
                     var originalText = bulkSyncBtn.text();
@@ -2319,7 +2223,21 @@ class Marrison_Master_Admin {
                         }
 
                         var clientUrl = clients[current];
-                        setRowLoading(clientUrl, 'normal');
+                        var row = $('#marrison-clients-body input[name="client_url"][value="' + clientUrl.replace(/"/g, '\\"') + '"]').closest('.mmu-main-row');
+                        if (row.length) {
+                            row.attr('data-status', 'pending');
+                            var led = row.find('.mmu-led').first();
+                            if (led.length) {
+                                led.removeClass(function(i, c) {
+                                    return (c.match(/mmu-led-state-\S+/g) || []).join(' ');
+                                });
+                                led.addClass('mmu-led-state-pending');
+                                led.css('color', '#9651d2');
+                                led.attr('title', 'Pending, waiting for Agent');
+                            }
+                            row.find('td:nth-child(4)').html('<span style="color:#2271b1; opacity:0.9;">Pending…</span>');
+                            row.find('td:nth-child(5)').html('<span style="color:#2271b1; opacity:0.9;">Pending…</span>');
+                        }
                         
                         $.post(ajaxurl, {
                             action: 'marrison_client_action',
@@ -2390,7 +2308,6 @@ class Marrison_Master_Admin {
                         }
 
                         var clientUrl = clients[current];
-                        setRowLoading(clientUrl, 'normal');
                         
                         $.post(ajaxurl, {
                             action: 'marrison_client_action',
@@ -2403,9 +2320,6 @@ class Marrison_Master_Admin {
                                 successCount++;
                                 if (response.data && response.data.counters) {
                                     $('.marrison-counters').html(response.data.counters);
-                                }
-                                if (response.data && response.data.message && response.data.message.indexOf('fallback') !== -1) {
-                                    setRowLoading(clientUrl, 'fallback');
                                 }
                             } else {
                                 errorCount++;
@@ -2456,9 +2370,18 @@ class Marrison_Master_Admin {
 
                 setInterval(function() {
                     if (document.hidden) return;
-                    if (window.isBulkRunning) return;
-                    refreshClientsTable();
-                }, 60000);
+                    var needsRefresh = false;
+                    $('.mmu-main-row').each(function() {
+                        var status = $(this).data('status');
+                        if (status && status !== 'active') {
+                            needsRefresh = true;
+                            return false;
+                        }
+                    });
+                    if (needsRefresh) {
+                        refreshClientsTable(true);
+                    }
+                }, 3000);
             });
         </script>
         <?php
